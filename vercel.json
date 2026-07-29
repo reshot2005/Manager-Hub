@@ -24,7 +24,7 @@
   ],
   "functions": {
     "api/index.js": {
-      "maxDuration": 60,
+      "maxDuration": 30,
       "memory": 1024,
       "includeFiles": "backend/**"
     }

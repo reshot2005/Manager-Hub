@@ -116,6 +116,40 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
 
+  // Instant liveness — no DB (use this to confirm a deploy is live)
+  app.get('/api/health', (req, res) => {
+    res.status(200).json({
+      ok: true,
+      service: 'manager-hub',
+      deploy: '2026-07-29-ssl-fix',
+      time: new Date().toISOString(),
+      runtime: process.env.VERCEL ? 'vercel' : 'node',
+      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+      hasJwtSecret: Boolean(process.env.JWT_SECRET),
+    });
+  });
+
+  app.get('/api/health/db', async (_req, res) => {
+    const started = Date.now();
+    try {
+      const { query } = await import('./config/db.js');
+      const r = await Promise.race([
+        query('select 1::int as ok'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('db timeout')), 5_000)
+        ),
+      ]);
+      res.json({ ok: true, db: r.rows[0], ms: Date.now() - started });
+    } catch (err) {
+      logServerError('[health/db]', err);
+      res.status(503).json({
+        ok: false,
+        error: 'database_unreachable',
+        ms: Date.now() - started,
+      });
+    }
+  });
+
   app.use(enforceHttps);
   app.use(securityHeaders());
   app.use(
@@ -129,49 +163,27 @@ export function createApp() {
   app.use('/api', globalApiLimiter);
 
   app.use(async (req, res, next) => {
-    if (!req.path.startsWith('/api')) return next();
-    // Health must stay fast even if DB is slow
-    if (req.path === '/api/health' || req.path.startsWith('/api/health')) return next();
+    const p = req.path || '';
+    if (!p.startsWith('/api')) return next();
+    // Never block health or auth on bootstrap
+    if (
+      p === '/api/health' ||
+      p.startsWith('/api/health') ||
+      p.startsWith('/api/auth')
+    ) {
+      return next();
+    }
     try {
       await Promise.race([
-        ensureBootstrap(),
+        ensureBootstrap({ light: true }),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('bootstrap timeout')), 12_000)
+          setTimeout(() => reject(new Error('bootstrap timeout')), 8_000)
         ),
       ]);
     } catch (err) {
       console.warn('[bootstrap middleware]', err.message?.slice(0, 120));
     }
     next();
-  });
-
-  app.get('/api/health', async (_req, res) => {
-    let bootstrap = null;
-    try {
-      bootstrap = await Promise.race([
-        ensureBootstrap(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('bootstrap timeout')), 8_000)
-        ),
-      ]);
-    } catch (err) {
-      bootstrap = { ok: false, error: 'unavailable' };
-      logServerError('[health/bootstrap]', err);
-    }
-    res.json({
-      ok: true,
-      service: 'manager-hub',
-      time: new Date().toISOString(),
-      runtime: process.env.VERCEL ? 'vercel' : 'node',
-      bootstrap: bootstrap
-        ? { ok: bootstrap.ok !== false, skipped: Boolean(bootstrap.skipped) }
-        : null,
-      sources: {
-        sprintboard: Boolean(process.env.SPRINTBOARD_DATABASE_URL || process.env.SPRINTBOARD_URL),
-        ats: Boolean(process.env.ATS_DATABASE_URL || process.env.ATS_URL),
-        attendance: Boolean(process.env.ATTENDANCE_DATABASE_URL),
-      },
-    });
   });
 
   app.post('/api/sync/cron', handleCronSync);

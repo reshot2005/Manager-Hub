@@ -47,10 +47,28 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    const { rows } = await query(
-      `SELECT * FROM managers WHERE LOWER(email) = LOWER($1)`,
-      [email]
-    );
+    if (!process.env.DATABASE_URL) {
+      return res.status(503).json({ message: 'DATABASE_URL is not configured on the server' });
+    }
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({ message: 'JWT_SECRET is not configured on the server' });
+    }
+
+    let rows;
+    try {
+      const result = await Promise.race([
+        query(`SELECT * FROM managers WHERE LOWER(email) = LOWER($1)`, [email]),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('db timeout')), 6_000)
+        ),
+      ]);
+      rows = result.rows;
+    } catch (err) {
+      logServerError('[auth/login db]', err);
+      return res.status(503).json({
+        message: 'Database unreachable. Check DATABASE_URL (Neon pooler, sslmode=require, no channel_binding).',
+      });
+    }
     const manager = rows[0];
 
     if (!manager || !manager.is_active) {
