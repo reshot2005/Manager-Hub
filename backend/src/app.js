@@ -140,43 +140,29 @@ export function createApp() {
   app.post('/api/backup/cron', handleCronBackup);
   app.get('/api/backup/cron', handleCronBackup);
 
-  // Lazy-mount heavy routers on first use
-  let routesReady = null;
-  async function ensureRoutes() {
-    if (routesReady) return routesReady;
-    routesReady = (async () => {
-      const [{ default: authRoutes }, { default: chatRoutes }, { default: dataRoutes }] =
-        await Promise.all([
-          import('./routes/authRoutes.js'),
-          import('./routes/chatRoutes.js'),
-          import('./routes/dataRoutes.js'),
-        ]);
-      app.use('/api/auth', authRoutes);
-      app.use('/api/chat', chatRoutes);
-      app.use('/api', dataRoutes);
-    })();
-    return routesReady;
-  }
-
-  app.use(async (req, res, next) => {
-    if (!req.path?.startsWith('/api')) return next();
+  // Import routers (sync/backup stay lazy above to keep cold start smaller)
+  // Auth is also handled in api/index.js on Vercel to avoid Express hang on login.
+  app.use('/api/auth', async (req, res, next) => {
+    const { default: authRoutes } = await import('./routes/authRoutes.js');
+    return authRoutes(req, res, next);
+  });
+  app.use('/api/chat', async (req, res, next) => {
+    const { default: chatRoutes } = await import('./routes/chatRoutes.js');
+    return chatRoutes(req, res, next);
+  });
+  app.use('/api', async (req, res, next) => {
+    // Avoid double-handling auth/chat/cron paths
     if (
-      req.path.startsWith('/api/sync/cron') ||
-      req.path.startsWith('/api/backup/cron') ||
-      req.path.startsWith('/api/health')
+      req.path.startsWith('/auth') ||
+      req.path.startsWith('/chat') ||
+      req.path.startsWith('/sync/cron') ||
+      req.path.startsWith('/backup/cron') ||
+      req.path.startsWith('/health')
     ) {
       return next();
     }
-    try {
-      await Promise.race([
-        ensureRoutes(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('routes timeout')), 10_000)),
-      ]);
-      next();
-    } catch (err) {
-      logServerError('[routes]', err);
-      res.status(503).json({ message: 'API routes warming up — retry shortly' });
-    }
+    const { default: dataRoutes } = await import('./routes/dataRoutes.js');
+    return dataRoutes(req, res, next);
   });
 
   app.use((err, _req, res, _next) => {
