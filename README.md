@@ -53,23 +53,24 @@ createdb manager_hub
 ```bash
 cd manager-hub/backend
 cp .env.example .env
-# Edit .env: DATABASE_URL, JWT_SECRET, GEMINI_API_KEY,
-# SPRINTBOARD_* and ATS_* credentials
+# Edit .env: DATABASE_URL, JWT_SECRET (32+ chars), GEMINI_API_KEY,
+# SEED_MANAGER_PASSWORD (required once), SPRINTBOARD_* and ATS_* credentials
 
 npm install
 npm run db:init
 npm run seed
 npm run demo:seed     # optional sample data (Jeevan, candidates, etc.)
 npm run sync          # optional: pull from Sprintboard + ATS now
+npm run backup        # optional: logical hub backup
 npm run dev           # http://localhost:4100
 ```
 
-Default seeded manager:
+Seeded manager (set password via `SEED_MANAGER_PASSWORD` — never committed):
 
-- Email: `manager@hub.local`
-- Password: `Manager@123`
+- Email: `manager@hub.local` (or `SEED_MANAGER_EMAIL`)
 - Role: `ADMIN`
 
+See `docs/SECURITY.md` and `docs/BACKUP_RESTORE.md` for production hardening.
 ### 3. Frontend
 
 ```bash

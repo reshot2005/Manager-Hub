@@ -1,0 +1,1091 @@
+import { query } from '../config/db.js';
+import { getManagerScope, employeeAclClause } from '../services/scope.js';
+import { sanitizeForAi } from '../utils/sanitize.js';
+import { logAiToolCall } from '../utils/auditLog.js';
+
+function fuzzyNameClause(column, paramIndex) {
+  return `(
+    LOWER(${column}) = LOWER($${paramIndex})
+    OR LOWER(${column}) LIKE LOWER('%' || $${paramIndex} || '%')
+    OR LOWER(SPLIT_PART(${column}, ' ', 1)) = LOWER($${paramIndex})
+  )`;
+}
+
+async function findEmployeesByName(name, scope, limit = 5) {
+  const acl = employeeAclClause(scope, 'e', 2);
+  if (acl.clause === 'FALSE') return [];
+
+  const params = [name, ...acl.params];
+  const { rows } = await query(
+    `SELECT e.id, e.external_id, e.name, e.email, e.role, e.team_ids, e.department,
+            e.shift_start, e.shift_end, e.late_after
+     FROM employees e
+     WHERE ${fuzzyNameClause('e.name', 1)}
+       AND ${acl.clause}
+       AND COALESCE(e.is_active, TRUE) = TRUE
+     ORDER BY
+       CASE WHEN LOWER(e.name) = LOWER($1) THEN 0
+            WHEN LOWER(SPLIT_PART(e.name, ' ', 1)) = LOWER($1) THEN 1
+            ELSE 2 END,
+       e.name
+     LIMIT ${limit}`,
+    params
+  );
+  return rows;
+}
+
+async function findCandidatesByName(name, scope, limit = 5) {
+  const params = [name];
+  let candClause = 'TRUE';
+  if (scope.unrestricted || scope.atsAll) {
+    candClause = 'TRUE';
+  } else if (scope.candidateIds?.length) {
+    params.push(scope.candidateIds);
+    candClause = `c.id = ANY($${params.length}::uuid[])`;
+  } else {
+    return [];
+  }
+
+  const { rows } = await query(
+    `SELECT c.id, c.external_id, c.name, c.email, c.phone, c.status, c.category, c.current_company
+     FROM candidates c
+     WHERE ${fuzzyNameClause('c.name', 1)} AND ${candClause}
+     ORDER BY
+       CASE WHEN LOWER(c.name) = LOWER($1) THEN 0
+            WHEN LOWER(SPLIT_PART(c.name, ' ', 1)) = LOWER($1) THEN 1
+            ELSE 2 END,
+       c.name
+     LIMIT ${limit}`,
+    params
+  );
+  return rows;
+}
+
+/** Tool names Gemini may call (snake + camel aliases). */
+export const toolDeclarations = [
+  {
+    name: 'getEmployeeStatus',
+    description:
+      "Employee today: shift, attendance today, open/overdue tasks, EOD submitted flag, latest EOD. Use for 'what is X working on' / is task done.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING', description: 'Employee name' },
+      },
+      required: ['employeeName'],
+    },
+  },
+  {
+    name: 'getPendingTasks',
+    description: 'Get incomplete/pending tasks for an employee (or whole team if name omitted).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING', description: 'Optional employee name' },
+      },
+    },
+  },
+  {
+    name: 'getLatestEod',
+    description: 'Fetch recent EOD / daily reports for an employee.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING' },
+        days: { type: 'NUMBER', description: 'How many recent reports (default 3)' },
+      },
+      required: ['employeeName'],
+    },
+  },
+  {
+    name: 'getTeamSummary',
+    description: "Daily digest of the current manager's team: pending tasks, EODs today, interviews today.",
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'getInterviewSchedule',
+    description: 'Get interviews filtered by candidate name and/or date range (YYYY-MM-DD). Defaults to today.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        candidateName: { type: 'STRING' },
+        startDate: { type: 'STRING' },
+        endDate: { type: 'STRING' },
+        date: { type: 'STRING', description: 'Single day YYYY-MM-DD' },
+      },
+    },
+  },
+  {
+    name: 'getCandidateStatus',
+    description: 'Get a candidate application pipeline status and interviews.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        candidateName: { type: 'STRING' },
+      },
+      required: ['candidateName'],
+    },
+  },
+  {
+    name: 'searchPeople',
+    description: 'Search employees and candidates by partial name to disambiguate.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'getAttendanceToday',
+    description:
+      "Who is present, absent, or late today (IST). Use for daily attendance roll-call.",
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'getEmployeeAttendance',
+    description:
+      "Get an employee's attendance days, punches, days worked, late count for a date range.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING' },
+        startDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        endDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        days: { type: 'NUMBER', description: 'Lookback days if range omitted (default 14)' },
+      },
+      required: ['employeeName'],
+    },
+  },
+  {
+    name: 'getAbsentees',
+    description: 'List employees who were Absent on a date or this week.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        date: { type: 'STRING', description: 'YYYY-MM-DD (defaults today IST)' },
+        week: { type: 'STRING', description: 'Set to true for last 7 days' },
+      },
+    },
+  },
+  {
+    name: 'getLoginTiming',
+    description: 'First punch / late minutes for a person or whole team on a date.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING' },
+        date: { type: 'STRING', description: 'YYYY-MM-DD defaults today IST' },
+      },
+    },
+  },
+  {
+    name: 'getPerformanceReport',
+    description:
+      'Combined performance: tasks + EOD + attendance score for an employee or team.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING' },
+        days: { type: 'NUMBER', description: 'Lookback days default 7' },
+      },
+    },
+  },
+  {
+    name: 'getWorkedDaysSummary',
+    description: 'Days worked / absent / late counts for an employee in a month.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING' },
+        month: { type: 'STRING', description: 'YYYY-MM or month number' },
+        year: { type: 'NUMBER' },
+      },
+      required: ['employeeName'],
+    },
+  },
+  {
+    name: 'getDailyBriefing',
+    description:
+      'One-shot morning brief: absentees, late arrivals, missing EODs, overdue tasks, interviews today. Use for standup / "who needs attention".',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'getEmployeeFullProfile',
+    description:
+      "God-level single-employee snapshot for today: shift, attendance today, open/overdue tasks, latest EOD, week attendance summary, performance score if available. Use for 'status of X', 'tell me about X today', 1:1 prep.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        employeeName: { type: 'STRING', description: 'Employee name' },
+      },
+      required: ['employeeName'],
+    },
+  },
+];
+
+const ALIASES = {
+  get_employee_status: 'getEmployeeStatus',
+  get_pending_tasks: 'getPendingTasks',
+  get_latest_eod: 'getLatestEod',
+  get_team_summary: 'getTeamSummary',
+  get_interview_schedule: 'getInterviewSchedule',
+  get_candidate_status: 'getCandidateStatus',
+  search_people: 'searchPeople',
+  get_attendance_today: 'getAttendanceToday',
+  get_employee_attendance: 'getEmployeeAttendance',
+  get_absentees: 'getAbsentees',
+  get_login_timing: 'getLoginTiming',
+  get_performance_report: 'getPerformanceReport',
+  get_worked_days_summary: 'getWorkedDaysSummary',
+  get_daily_briefing: 'getDailyBriefing',
+  get_employee_full_profile: 'getEmployeeFullProfile',
+  employee_full_profile: 'getEmployeeFullProfile',
+};
+
+/**
+ * Execute a tool. manager comes from JWT — NEVER from LLM args.
+ */
+export async function executeTool(name, args, manager) {
+  const resolved = ALIASES[name] || name;
+  const scope = await getManagerScope(manager);
+  // Strip any spoofed managerId from model args
+  const a = { ...(args || {}) };
+  delete a.managerId;
+  delete a.manager_id;
+
+  let result;
+  let success = true;
+  try {
+    switch (resolved) {
+      case 'getEmployeeStatus':
+        result = await getEmployeeStatus(a.employeeName || a.name, scope);
+        break;
+      case 'getPendingTasks':
+        result = await getPendingTasks(a.employeeName || a.name, scope);
+        break;
+      case 'getLatestEod':
+        result = await getLatestEod(a.employeeName || a.name, a.days, scope);
+        break;
+      case 'getTeamSummary':
+        result = await getTeamSummary(scope);
+        break;
+      case 'getInterviewSchedule':
+        result = await getInterviewSchedule(a, scope);
+        break;
+      case 'getCandidateStatus':
+        result = await getCandidateStatus(a.candidateName || a.name, scope);
+        break;
+      case 'searchPeople':
+        result = await searchPeople(a.query || a.name, scope);
+        break;
+      case 'getAttendanceToday':
+        result = await getAttendanceToday(scope);
+        break;
+      case 'getEmployeeAttendance':
+        result = await getEmployeeAttendance(a, scope);
+        break;
+      case 'getAbsentees':
+        result = await getAbsentees(a, scope);
+        break;
+      case 'getLoginTiming':
+        result = await getLoginTiming(a, scope);
+        break;
+      case 'getPerformanceReport':
+        result = await getPerformanceReport(a, scope);
+        break;
+      case 'getWorkedDaysSummary':
+        result = await getWorkedDaysSummary(a, scope);
+        break;
+      case 'getDailyBriefing':
+        result = await getDailyBriefing(scope);
+        break;
+      case 'getEmployeeFullProfile':
+        result = await getEmployeeFullProfile(a.employeeName || a.name, scope);
+        break;
+      default:
+        result = { error: `Unknown tool: ${name}` };
+        success = false;
+    }
+  } catch (err) {
+    success = false;
+    result = { error: 'Tool failed' };
+  }
+
+  await logAiToolCall({
+    managerId: manager?.id,
+    toolName: resolved,
+    args: a,
+    success,
+  });
+
+  return sanitizeForAi(result);
+}
+
+async function searchPeople(q, scope) {
+  if (!q) return { employees: [], candidates: [] };
+  const employees = await findEmployeesByName(q, scope, 8);
+  const candidates = await findCandidatesByName(q, scope, 8);
+  return {
+    employees: employees.map((e) => ({ name: e.name, email: e.email, role: e.role })),
+    candidates: candidates.map((c) => ({ name: c.name, email: c.email, status: c.status })),
+  };
+}
+
+async function getEmployeeStatus(name, scope) {
+  if (!name) return { error: 'employeeName required' };
+  const matches = await findEmployeesByName(name, scope, 5);
+  if (!matches.length) {
+    return { found: false, message: `No employee matching "${name}" in your team.` };
+  }
+  if (matches.length > 1 && !matches.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
+    return {
+      found: false,
+      ambiguous: true,
+      matches: matches.map((m) => m.name),
+      message: 'Multiple employees matched. Ask the manager to clarify.',
+    };
+  }
+  const emp = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || matches[0];
+  const today = await todayIst();
+
+  const [tasksRes, eodsRes, attRes] = await Promise.all([
+    query(
+      `SELECT title, status, priority, due_date, project_name, updated_at
+       FROM tasks WHERE employee_id = $1
+       ORDER BY
+         CASE WHEN status = 'Done' THEN 1 ELSE 0 END,
+         due_date NULLS LAST,
+         updated_at DESC NULLS LAST
+       LIMIT 15`,
+      [emp.id]
+    ),
+    query(
+      `SELECT report_date, status, achievements, tasks_data, pending_tasks_data,
+              blockers_data, tomorrow_plan, self_evaluation, working_mode, submitted_at
+       FROM eod_reports WHERE employee_id = $1
+       ORDER BY report_date DESC LIMIT 1`,
+      [emp.id]
+    ),
+    query(
+      `SELECT work_date, status, first_in, last_out, hours_worked, late_minutes, punch_count
+       FROM attendance_days WHERE employee_id = $1 AND work_date = $2::date`,
+      [emp.id, today]
+    ),
+  ]);
+
+  const tasks = tasksRes.rows;
+  const eods = eodsRes.rows;
+  const attendanceToday = attRes.rows[0] || null;
+
+  const openTasks = tasks.filter((t) => t.status && t.status !== 'Done' && t.status !== 'Backlog');
+  const overdueTasks = openTasks.filter(
+    (t) => t.due_date && String(t.due_date).slice(0, 10) < today
+  );
+  const latestEod = eods[0] || null;
+  const eodToday =
+    latestEod && String(latestEod.report_date).slice(0, 10) === today ? latestEod : null;
+
+  return {
+    found: true,
+    as_of_date: today,
+    timezone: 'Asia/Kolkata',
+    employee: {
+      name: emp.name,
+      email: emp.email,
+      role: emp.role,
+      department: emp.department,
+      shift_start: emp.shift_start || '09:30',
+      shift_end: emp.shift_end || '19:00',
+      late_after: emp.late_after || emp.shift_start || '09:30',
+    },
+    attendance_today: attendanceToday,
+    open_tasks: openTasks,
+    overdue_tasks: overdueTasks,
+    open_task_count: openTasks.length,
+    overdue_count: overdueTasks.length,
+    recent_tasks: tasks,
+    eod_submitted_today: Boolean(eodToday),
+    latest_eod: latestEod
+      ? {
+          date: latestEod.report_date,
+          status: latestEod.status,
+          achievements: latestEod.achievements,
+          tasks_worked: latestEod.tasks_data,
+          pending: latestEod.pending_tasks_data,
+          blockers: latestEod.blockers_data,
+          tomorrow_plan: latestEod.tomorrow_plan,
+          self_evaluation: latestEod.self_evaluation,
+          working_mode: latestEod.working_mode,
+          submitted_at: latestEod.submitted_at,
+        }
+      : null,
+  };
+}
+
+async function getPendingTasks(name, scope) {
+  const params = [];
+  let employeeFilter = '';
+
+  if (name) {
+    const matches = await findEmployeesByName(name, scope, 3);
+    if (!matches.length) return { tasks: [], message: `No employee matching "${name}" in your team.` };
+    params.push(matches[0].id);
+    employeeFilter = `AND t.employee_id = $${params.length}`;
+  } else {
+    const acl = employeeAclClause(scope, 'e', params.length + 1);
+    if (acl.clause === 'FALSE') return { tasks: [] };
+    if (!scope.unrestricted) {
+      params.push(...acl.params);
+      employeeFilter = `AND t.employee_id = ANY($${params.length}::uuid[])`;
+    }
+  }
+
+  const { rows } = await query(
+    `SELECT t.title, t.status, t.priority, t.due_date, t.project_name, e.name AS employee_name
+     FROM tasks t
+     LEFT JOIN employees e ON e.id = t.employee_id
+     WHERE COALESCE(t.status, '') NOT IN ('Done')
+     ${employeeFilter}
+     ORDER BY t.due_date NULLS LAST, t.priority DESC
+     LIMIT 40`,
+    params
+  );
+  return { tasks: rows, count: rows.length };
+}
+
+async function getLatestEod(name, days, scope) {
+  const matches = await findEmployeesByName(name, scope, 3);
+  if (!matches.length) return { found: false, message: `No employee matching "${name}" in your team.` };
+  const emp = matches[0];
+  const limit = Math.min(Number(days) || 3, 14);
+
+  const { rows } = await query(
+    `SELECT report_date, status, achievements, tasks_data, pending_tasks_data,
+            blockers_data, tomorrow_plan, self_evaluation, working_mode, submitted_at
+     FROM eod_reports WHERE employee_id = $1
+     ORDER BY report_date DESC LIMIT $2`,
+    [emp.id, limit]
+  );
+
+  return { found: true, employee: emp.name, reports: rows };
+}
+
+async function getCandidateStatus(name, scope) {
+  const matches = await findCandidatesByName(name, scope, 5);
+  if (!matches.length) return { found: false, message: `No candidate matching "${name}".` };
+  if (matches.length > 1 && !matches.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
+    return { found: false, ambiguous: true, matches: matches.map((m) => m.name) };
+  }
+  const c = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || matches[0];
+
+  const { rows: apps } = await query(
+    `SELECT job_title, status, stage_name, shortlisted FROM applications WHERE candidate_id = $1`,
+    [c.id]
+  );
+  const { rows: interviews } = await query(
+    `SELECT scheduled_start, scheduled_end, mode, result, round_no, round_label,
+            interviewer_names, job_title, meeting_link
+     FROM interviews WHERE candidate_id = $1
+     ORDER BY scheduled_start DESC NULLS LAST LIMIT 10`,
+    [c.id]
+  );
+
+  return {
+    found: true,
+    candidate: {
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      status: c.status,
+      category: c.category,
+      current_company: c.current_company,
+    },
+    applications: apps,
+    interviews,
+  };
+}
+
+async function getInterviewSchedule(args, scope) {
+  const { candidateName, startDate, endDate, date, name } = args || {};
+  const candName = candidateName || name;
+  const params = [];
+  const clauses = [];
+
+  if (!scope.unrestricted && !scope.atsAll) {
+    if (!scope.candidateIds?.length) {
+      return { interviews: [], count: 0, message: 'No candidate access for this manager.' };
+    }
+    params.push(scope.candidateIds);
+    clauses.push(`candidate_id = ANY($${params.length}::uuid[])`);
+  }
+
+  if (startDate && endDate) {
+    params.push(startDate, endDate);
+    clauses.push(
+      `(scheduled_start AT TIME ZONE 'Asia/Kolkata')::date BETWEEN $${params.length - 1}::date AND $${params.length}::date`
+    );
+  } else if (date) {
+    params.push(date);
+    clauses.push(`(scheduled_start AT TIME ZONE 'Asia/Kolkata')::date = $${params.length}::date`);
+  } else if (!candName) {
+    const { rows } = await query(
+      `SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date::text AS d`
+    );
+    params.push(rows[0].d);
+    clauses.push(`(scheduled_start AT TIME ZONE 'Asia/Kolkata')::date = $${params.length}::date`);
+  }
+
+  if (candName) {
+    params.push(candName);
+    clauses.push(`(
+      LOWER(candidate_name) LIKE LOWER('%' || $${params.length} || '%')
+      OR candidate_id IN (
+        SELECT id FROM candidates WHERE LOWER(name) LIKE LOWER('%' || $${params.length} || '%')
+      )
+    )`);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const { rows } = await query(
+    `SELECT candidate_name, job_title, scheduled_start, scheduled_end, mode, result,
+            round_no, round_label, interviewer_names, meeting_link
+     FROM interviews
+     ${where}
+     ORDER BY scheduled_start ASC NULLS LAST
+     LIMIT 50`,
+    params
+  );
+  return {
+    interviews: rows,
+    count: rows.length,
+    filter: { startDate, endDate, date, candidateName: candName || null },
+  };
+}
+
+async function getTeamSummary(scope) {
+  const { rows: todayRows } = await query(
+    `SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date::text AS d`
+  );
+  const today = todayRows[0].d;
+
+  const acl = employeeAclClause(scope, 'e', 1);
+  if (acl.clause === 'FALSE') {
+    return {
+      date: today,
+      message: 'No team linked to this manager.',
+      open_tasks: 0,
+      overdue_tasks: [],
+      eods_today: [],
+      interviews_today: [],
+    };
+  }
+
+  const teamParams = acl.params;
+  const empInTeam = scope.unrestricted
+    ? 'TRUE'
+    : `e.id = ANY($1::uuid[])`;
+  const taskInTeam = scope.unrestricted
+    ? 'TRUE'
+    : `t.employee_id = ANY($1::uuid[])`;
+
+  const { rows: openCount } = await query(
+    `SELECT COUNT(*)::int AS c FROM tasks t
+     WHERE COALESCE(t.status,'') NOT IN ('Done') AND ${taskInTeam}`,
+    teamParams
+  );
+
+  const { rows: overdue } = await query(
+    `SELECT t.title, t.status, t.due_date, e.name AS employee_name
+     FROM tasks t LEFT JOIN employees e ON e.id = t.employee_id
+     WHERE COALESCE(t.status,'') NOT IN ('Done')
+       AND t.due_date < CURRENT_DATE
+       AND t.due_date > DATE '2000-01-01'
+       AND ${taskInTeam}
+     ORDER BY t.due_date ASC LIMIT 20`,
+    teamParams
+  );
+
+  const eodParams = scope.unrestricted ? [today] : [...teamParams, today];
+  const dateIdx = scope.unrestricted ? 1 : 2;
+  const { rows: eodsToday } = await query(
+    `SELECT e.name AS employee_name, r.report_date, r.status, r.achievements,
+            r.blockers_data, r.submitted_at
+     FROM eod_reports r
+     JOIN employees e ON e.id = r.employee_id
+     WHERE r.report_date = $${dateIdx}::date AND ${empInTeam}
+     ORDER BY e.name`,
+    eodParams
+  );
+
+  let interviews = [];
+  if (scope.unrestricted || scope.atsAll) {
+    const { rows } = await query(
+      `SELECT candidate_name, job_title, scheduled_start, mode, interviewer_names, result
+       FROM interviews
+       WHERE (scheduled_start AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+       ORDER BY scheduled_start ASC`,
+      [today]
+    );
+    interviews = rows;
+  } else if (scope.candidateIds?.length) {
+    const { rows } = await query(
+      `SELECT candidate_name, job_title, scheduled_start, mode, interviewer_names, result
+       FROM interviews
+       WHERE (scheduled_start AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+         AND candidate_id = ANY($2::uuid[])
+       ORDER BY scheduled_start ASC`,
+      [today, scope.candidateIds]
+    );
+    interviews = rows;
+  }
+
+  return {
+    date: today,
+    open_tasks: openCount[0]?.c ?? 0,
+    overdue_tasks: overdue,
+    eods_today: eodsToday,
+    eod_submitted_count: eodsToday.filter((r) => r.status && r.status !== 'Draft').length,
+    interviews_today: interviews,
+  };
+}
+
+async function todayIst() {
+  const { rows } = await query(`SELECT (NOW() AT TIME ZONE 'Asia/Kolkata')::date::text AS d`);
+  return rows[0].d;
+}
+
+function teamEmpFilter(scope, alias = 'e', startIdx = 1) {
+  const acl = employeeAclClause(scope, alias, startIdx);
+  return acl;
+}
+
+async function getAttendanceToday(scope) {
+  const today = await todayIst();
+  const acl = teamEmpFilter(scope, 'e', 2);
+  if (acl.clause === 'FALSE') return { date: today, present: [], absent: [], late: [], message: 'No team linked.' };
+
+  const params = [today, ...acl.params];
+  const { rows } = await query(
+    `SELECT e.name, e.email, e.shift_start, e.shift_end, e.late_after,
+            d.status, d.first_in, d.last_out, d.hours_worked, d.late_minutes
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.work_date = $1::date AND ${acl.clause}
+     ORDER BY e.name`,
+    params
+  );
+
+  const withShift = rows.map((r) => ({
+    ...r,
+    shift: `${r.shift_start || '09:30'}–${r.shift_end || '19:00'} IST`,
+    late_after: r.late_after || r.shift_start || '09:30',
+  }));
+
+  return {
+    date: today,
+    timezone: 'Asia/Kolkata',
+    shift_defaults: {
+      standard: '09:30–19:00 (late after 09:30)',
+      late_start: '10:30–20:00 (late after 10:30)',
+      early: '08:00–18:00 (late after 08:00)',
+    },
+    counts: {
+      present: withShift.filter((r) => r.status === 'Present').length,
+      late: withShift.filter((r) => r.status === 'Late').length,
+      absent: withShift.filter((r) => r.status === 'Absent').length,
+      half_day: withShift.filter((r) => r.status === 'Half Day').length,
+      on_leave: withShift.filter((r) => r.status === 'On Leave').length,
+      total: withShift.length,
+    },
+    present: withShift.filter((r) => ['Present', 'Late', 'Half Day'].includes(r.status)),
+    late: withShift.filter((r) => r.status === 'Late'),
+    absent: withShift.filter((r) => r.status === 'Absent'),
+    note: withShift.length ? null : 'No attendance synced for today yet.',
+  };
+}
+
+async function getEmployeeAttendance(args, scope) {
+  const name = args.employeeName || args.name;
+  if (!name) return { error: 'employeeName required' };
+  const matches = await findEmployeesByName(name, scope, 5);
+  if (!matches.length) return { found: false, message: `No employee matching "${name}".` };
+  const emp = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || matches[0];
+
+  const days = Math.min(Number(args.days) || 14, 90);
+  let start = args.startDate;
+  let end = args.endDate;
+  if (!start || !end) {
+    const today = await todayIst();
+    end = end || today;
+    const d = new Date(end);
+    d.setDate(d.getDate() - days);
+    start = start || d.toISOString().slice(0, 10);
+  }
+
+  const { rows: dayRows } = await query(
+    `SELECT work_date, status, first_in, last_out, hours_worked, late_minutes, punch_count
+     FROM attendance_days
+     WHERE employee_id = $1 AND work_date BETWEEN $2::date AND $3::date
+     ORDER BY work_date DESC`,
+    [emp.id, start, end]
+  );
+
+  const { rows: punches } = await query(
+    `SELECT punch_time, punch_type, device_sn
+     FROM attendance_punches
+     WHERE employee_id = $1 AND punch_time::date BETWEEN $2::date AND $3::date
+     ORDER BY punch_time DESC LIMIT 100`,
+    [emp.id, start, end]
+  );
+
+  const worked = dayRows.filter((d) => ['Present', 'Late', 'Half Day'].includes(d.status)).length;
+  const absent = dayRows.filter((d) => d.status === 'Absent').length;
+  const late = dayRows.filter((d) => d.status === 'Late').length;
+
+  return {
+    found: true,
+    employee: {
+      name: emp.name,
+      email: emp.email,
+      role: emp.role,
+      department: emp.department,
+      shift_start: emp.shift_start || '09:30',
+      shift_end: emp.shift_end || '19:00',
+      late_after: emp.late_after || emp.shift_start || '09:30',
+      shift_label: `${emp.shift_start || '09:30'}–${emp.shift_end || '19:00'} IST`,
+    },
+    range: { start, end },
+    summary: { days_worked: worked, absent, late, records: dayRows.length },
+    days: dayRows,
+    recent_punches: punches.slice(0, 30),
+  };
+}
+
+async function getAbsentees(args, scope) {
+  const acl = teamEmpFilter(scope, 'e', 2);
+  if (acl.clause === 'FALSE') return { absentees: [], message: 'No team linked.' };
+
+  const week = String(args.week || '').toLowerCase() === 'true' || args.week === true;
+  if (week) {
+    const today = await todayIst();
+    const params = [today, ...acl.params];
+    const { rows } = await query(
+      `SELECT e.name, e.email, d.work_date, d.status
+       FROM attendance_days d
+       JOIN employees e ON e.id = d.employee_id
+       WHERE d.status = 'Absent'
+         AND d.work_date >= ($1::date - INTERVAL '6 days')
+         AND d.work_date <= $1::date
+         AND ${acl.clause}
+       ORDER BY d.work_date DESC, e.name`,
+      params
+    );
+    return { week: true, absentees: rows, count: rows.length };
+  }
+
+  const date = args.date || (await todayIst());
+  const params = [date, ...acl.params];
+  const { rows } = await query(
+    `SELECT e.name, e.email, d.work_date, d.status
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.status = 'Absent' AND d.work_date = $1::date AND ${acl.clause}
+     ORDER BY e.name`,
+    params
+  );
+  return { date, absentees: rows, count: rows.length };
+}
+
+async function getLoginTiming(args, scope) {
+  const date = args.date || (await todayIst());
+  const name = args.employeeName || args.name;
+
+  if (name) {
+    const matches = await findEmployeesByName(name, scope, 3);
+    if (!matches.length) return { found: false, message: `No employee matching "${name}".` };
+    const emp = matches[0];
+    const { rows } = await query(
+      `SELECT work_date, status, first_in, last_out, late_minutes, hours_worked
+       FROM attendance_days WHERE employee_id = $1 AND work_date = $2::date`,
+      [emp.id, date]
+    );
+    const { rows: punches } = await query(
+      `SELECT punch_time, punch_type FROM attendance_punches
+       WHERE employee_id = $1 AND (punch_time AT TIME ZONE 'Asia/Kolkata')::date = $2::date
+       ORDER BY punch_time ASC`,
+      [emp.id, date]
+    );
+    return {
+      found: true,
+      employee: emp.name,
+      shift_start: emp.shift_start || '09:30',
+      shift_end: emp.shift_end || '19:00',
+      late_after: emp.late_after || emp.shift_start || '09:30',
+      date,
+      day: rows[0] || null,
+      punches,
+      note: rows[0] ? null : 'No attendance record for this date.',
+    };
+  }
+
+  const acl = teamEmpFilter(scope, 'e', 2);
+  if (acl.clause === 'FALSE') return { date, timings: [] };
+  const params = [date, ...acl.params];
+  const { rows } = await query(
+    `SELECT e.name, e.shift_start, e.shift_end, e.late_after,
+            d.status, d.first_in, d.late_minutes, d.last_out
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.work_date = $1::date AND ${acl.clause}
+     ORDER BY d.first_in NULLS LAST, e.name`,
+    params
+  );
+  return {
+    date,
+    timezone: 'Asia/Kolkata',
+    note: 'Late minutes are vs each employee late_after (default 09:30 IST).',
+    timings: rows.map((r) => ({
+      ...r,
+      shift: `${r.shift_start || '09:30'}–${r.shift_end || '19:00'}`,
+      late_after: r.late_after || r.shift_start || '09:30',
+    })),
+    count: rows.length,
+  };
+}
+
+async function getPerformanceReport(args, scope) {
+  const days = Math.min(Number(args.days) || 7, 60);
+  const today = await todayIst();
+  const name = args.employeeName || args.name;
+
+  if (name) {
+    const matches = await findEmployeesByName(name, scope, 3);
+    if (!matches.length) return { found: false, message: `No employee matching "${name}".` };
+    const emp = matches[0];
+    const { rows } = await query(
+      `SELECT work_date, open_tasks, done_tasks, eod_submitted, attendance_status, blockers_flag, score
+       FROM employee_performance_daily
+       WHERE employee_id = $1 AND work_date >= ($2::date - ($3::int || ' days')::interval)
+       ORDER BY work_date DESC`,
+      [emp.id, today, days]
+    );
+    const avg =
+      rows.length > 0 ? Math.round(rows.reduce((s, r) => s + (r.score || 0), 0) / rows.length) : null;
+    return {
+      found: true,
+      employee: emp.name,
+      days,
+      average_score: avg,
+      daily: rows,
+      note: rows.length ? null : 'No performance cache yet — run attendance sync.',
+    };
+  }
+
+  const acl = teamEmpFilter(scope, 'e', 3);
+  if (acl.clause === 'FALSE') return { team: [] };
+  const params = [today, days, ...acl.params];
+  const { rows } = await query(
+    `SELECT e.name,
+            ROUND(AVG(p.score))::int AS avg_score,
+            COUNT(*)::int AS days_scored,
+            SUM(CASE WHEN p.attendance_status = 'Absent' THEN 1 ELSE 0 END)::int AS absent_days,
+            SUM(CASE WHEN p.eod_submitted THEN 1 ELSE 0 END)::int AS eod_days
+     FROM employee_performance_daily p
+     JOIN employees e ON e.id = p.employee_id
+     WHERE p.work_date >= ($1::date - ($2::int || ' days')::interval)
+       AND ${acl.clause}
+     GROUP BY e.id, e.name
+     ORDER BY avg_score DESC NULLS LAST
+     LIMIT 50`,
+    params
+  );
+  return { days, team: rows };
+}
+
+async function getWorkedDaysSummary(args, scope) {
+  const name = args.employeeName || args.name;
+  if (!name) return { error: 'employeeName required' };
+  const matches = await findEmployeesByName(name, scope, 3);
+  if (!matches.length) return { found: false, message: `No employee matching "${name}".` };
+  const emp = matches[0];
+
+  const today = await todayIst();
+  let year = Number(args.year) || Number(today.slice(0, 4));
+  let month = args.month;
+  if (!month) month = today.slice(0, 7);
+  else if (/^\d{1,2}$/.test(String(month))) {
+    month = `${year}-${String(month).padStart(2, '0')}`;
+  } else if (/^\d{4}-\d{2}$/.test(String(month))) {
+    year = Number(String(month).slice(0, 4));
+  }
+
+  const { rows } = await query(
+    `SELECT status, COUNT(*)::int AS c
+     FROM attendance_days
+     WHERE employee_id = $1 AND to_char(work_date, 'YYYY-MM') = $2
+     GROUP BY status`,
+    [emp.id, month]
+  );
+  const map = Object.fromEntries(rows.map((r) => [r.status, r.c]));
+  const worked = (map.Present || 0) + (map.Late || 0) + (map['Half Day'] || 0);
+
+  return {
+    found: true,
+    employee: emp.name,
+    month,
+    days_worked: worked,
+    present: map.Present || 0,
+    late: map.Late || 0,
+    half_day: map['Half Day'] || 0,
+    absent: map.Absent || 0,
+    on_leave: map['On Leave'] || 0,
+    holiday: map.Holiday || 0,
+    by_status: map,
+  };
+}
+
+async function getDailyBriefing(scope) {
+  const today = await todayIst();
+  const attendance = await getAttendanceToday(scope);
+  const team = await getTeamSummary(scope);
+
+  const acl = teamEmpFilter(scope, 'e', 2);
+  let missingEod = [];
+  if (acl.clause !== 'FALSE') {
+    const params = [today, ...acl.params];
+    const { rows } = await query(
+      `SELECT e.name, e.email
+       FROM employees e
+       WHERE COALESCE(e.is_active, TRUE) = TRUE
+         AND ${acl.clause}
+         AND NOT EXISTS (
+           SELECT 1 FROM eod_reports r
+           WHERE r.employee_id = e.id AND r.report_date = $1::date
+         )
+       ORDER BY e.name
+       LIMIT 40`,
+      params
+    );
+    missingEod = rows;
+  }
+
+  const istHour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      hour12: false,
+    }).format(new Date())
+  );
+  const partOfDay = istHour < 12 ? 'morning' : istHour < 17 ? 'afternoon' : 'evening';
+
+  return {
+    date: today,
+    timezone: 'Asia/Kolkata',
+    part_of_day: partOfDay,
+    attendance: attendance.counts,
+    absentees: attendance.absent || [],
+    late_arrivals: attendance.late || [],
+    present_sample: (attendance.present || []).slice(0, 20),
+    missing_eods: missingEod,
+    missing_eod_count: missingEod.length,
+    overdue_tasks: team.overdue_tasks || [],
+    overdue_count: (team.overdue_tasks || []).length,
+    open_tasks: team.open_tasks,
+    interviews_today: team.interviews_today || [],
+    interview_count: (team.interviews_today || []).length,
+    eods_submitted_today: team.eod_submitted_count || 0,
+    attention_priority: {
+      absent_with_overdue: (attendance.absent || [])
+        .filter((a) =>
+          (team.overdue_tasks || []).some(
+            (t) => t.employee_name?.toLowerCase() === a.name?.toLowerCase()
+          )
+        )
+        .map((a) => a.name),
+      late_names: (attendance.late || []).map(
+        (r) =>
+          `${r.name} (in ${r.first_in ? new Date(r.first_in).toISOString() : '—'}, ${r.late_minutes || 0}m after ${r.late_after || r.shift_start || '09:30'})`
+      ),
+      missing_eod_names: missingEod.map((m) => m.name),
+    },
+  };
+}
+
+async function getEmployeeFullProfile(name, scope) {
+  if (!name) return { error: 'employeeName required' };
+  const status = await getEmployeeStatus(name, scope);
+  if (!status.found) return status;
+
+  const matches = await findEmployeesByName(name, scope, 3);
+  const emp = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || matches[0];
+  if (!emp) return status;
+
+  const today = await todayIst();
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 6);
+  const weekStart = weekAgo.toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+
+  const [weekAtt, monthSummary, perf] = await Promise.all([
+    query(
+      `SELECT work_date, status, first_in, last_out, late_minutes, hours_worked
+       FROM attendance_days
+       WHERE employee_id = $1 AND work_date BETWEEN $2::date AND $3::date
+       ORDER BY work_date DESC`,
+      [emp.id, weekStart, today]
+    ),
+    query(
+      `SELECT status, COUNT(*)::int AS c
+       FROM attendance_days
+       WHERE employee_id = $1 AND to_char(work_date, 'YYYY-MM') = $2
+       GROUP BY status`,
+      [emp.id, month]
+    ),
+    query(
+      `SELECT work_date, score, attendance_status, eod_submitted, open_tasks, done_tasks, blockers_flag
+       FROM employee_performance_daily
+       WHERE employee_id = $1 AND work_date >= $2::date
+       ORDER BY work_date DESC LIMIT 7`,
+      [emp.id, weekStart]
+    ),
+  ]);
+
+  const monthMap = Object.fromEntries(monthSummary.rows.map((r) => [r.status, r.c]));
+  const daysWorked =
+    (monthMap.Present || 0) + (monthMap.Late || 0) + (monthMap['Half Day'] || 0);
+  const avgScore =
+    perf.rows.length > 0
+      ? Math.round(perf.rows.reduce((s, r) => s + (r.score || 0), 0) / perf.rows.length)
+      : null;
+
+  return {
+    ...status,
+    profile: 'full',
+    week_attendance: weekAtt.rows,
+    month: month,
+    month_summary: {
+      days_worked: daysWorked,
+      present: monthMap.Present || 0,
+      late: monthMap.Late || 0,
+      half_day: monthMap['Half Day'] || 0,
+      absent: monthMap.Absent || 0,
+      on_leave: monthMap['On Leave'] || 0,
+      by_status: monthMap,
+    },
+    performance_last_7_days: perf.rows,
+    average_score_7d: avgScore,
+    health_flags: {
+      absent_today: status.attendance_today?.status === 'Absent',
+      late_today: status.attendance_today?.status === 'Late',
+      missing_eod_today: !status.eod_submitted_today,
+      has_overdue_tasks: (status.overdue_count || 0) > 0,
+      has_blockers: Boolean(
+        status.latest_eod?.blockers &&
+          JSON.stringify(status.latest_eod.blockers) !== '[]' &&
+          JSON.stringify(status.latest_eod.blockers) !== 'null'
+      ),
+    },
+  };
+}

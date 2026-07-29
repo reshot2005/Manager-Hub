@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: manager-hub-pg
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: manager_hub
+    ports:
+      - '5433:5432'
+    volumes:
+      - manager_hub_pg:/var/lib/postgresql/data
+
+volumes:
+  manager_hub_pg:

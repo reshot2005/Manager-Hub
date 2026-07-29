@@ -1,0 +1,19 @@
+{
+  "name": "manager-hub",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Manager AI Hub — Vercel frontend + serverless API",
+  "scripts": {
+    "dev:api": "npm run dev --prefix backend",
+    "dev:web": "npm run dev --prefix frontend",
+    "db:init": "npm run db:init --prefix backend",
+    "seed": "npm run seed --prefix backend",
+    "sync": "npm run sync --prefix backend",
+    "build": "npm run build --prefix frontend",
+    "vercel-build": "npm run build --prefix frontend"
+  },
+  "dependencies": {
+    "serverless-http": "^3.2.0"
+  }
+}
