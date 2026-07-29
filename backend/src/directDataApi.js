@@ -238,29 +238,35 @@ async function listEods(manager, qp) {
     params.push(scope.employeeIds);
     clauses.push(`r.employee_id = ANY($${params.length}::uuid[])`);
   }
-  if (qp.employee_id) {
-    params.push(qp.employee_id);
-    clauses.push(`r.employee_id = $${params.length}::uuid`);
-  }
-  if (qp.from) {
-    params.push(qp.from);
+  const dateFrom = String(qp.date_from || qp.from || '').trim();
+  const dateTo = String(qp.date_to || qp.to || '').trim();
+  const employeeId = String(qp.employee_id || '').trim();
+  if (dateFrom) {
+    params.push(dateFrom);
     clauses.push(`r.report_date >= $${params.length}::date`);
   }
-  if (qp.to) {
-    params.push(qp.to);
+  if (dateTo) {
+    params.push(dateTo);
     clauses.push(`r.report_date <= $${params.length}::date`);
+  }
+  if (employeeId) {
+    params.push(employeeId);
+    clauses.push(`r.employee_id = $${params.length}::uuid`);
   }
   if (qp.q) {
     params.push(qp.q);
-    clauses.push(`LOWER(e.name) LIKE LOWER('%' || $${params.length} || '%')`);
+    clauses.push(
+      `(LOWER(e.name) LIKE LOWER('%' || $${params.length} || '%') OR LOWER(e.email) LIKE LOWER('%' || $${params.length} || '%'))`
+    );
   }
   const { rows } = await query(
-    `SELECT r.id, r.report_date, r.status, r.achievements, r.tasks_data, r.blockers_data,
-            r.submitted_at, e.name AS employee_name, e.email AS employee_email, e.id AS employee_id
+    `SELECT r.id, r.report_date, r.status, r.achievements, r.tasks_data, r.pending_tasks_data,
+            r.blockers_data, r.tomorrow_plan, r.self_evaluation, r.working_mode, r.submitted_at,
+            e.name AS employee_name, e.email AS employee_email, e.id AS employee_id, e.role AS employee_role
      FROM eod_reports r
      JOIN employees e ON e.id = r.employee_id
      WHERE ${clauses.join(' AND ')}
-     ORDER BY r.report_date DESC, e.name
+     ORDER BY r.report_date DESC, r.submitted_at DESC
      LIMIT 300`,
     params
   );
