@@ -78,7 +78,7 @@ function getModel(modelName) {
     generationConfig: {
       temperature: 0.3,
       topP: 0.9,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 4096,
     },
   });
 }

@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-  Sparkles,
-  Globe,
-  Send,
-  ChevronDown,
   ArrowLeft,
   ClipboardList,
   AlertTriangle,
   UserCheck,
   UserRoundSearch,
   MessageSquare,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { BentoCard, BentoGrid } from '@/components/ui/bento-grid';
+import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 
-const MAX_CHARS = 1000;
+const MAX_CHARS = 4000;
 
 const SUGGESTED_BENTO = [
   {
@@ -24,7 +23,7 @@ const SUGGESTED_BENTO = [
     name: "Today's daily briefing",
     description: 'Attendance, missing EODs, overdue tasks, and interviews — one morning snapshot.',
     prompt:
-      "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews",
+      "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews. Write a full, clear Gemini-style answer.",
     Icon: ClipboardList,
     cta: 'Ask now',
     className: 'lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3',
@@ -41,7 +40,7 @@ const SUGGESTED_BENTO = [
     name: 'Who needs attention?',
     description: 'Absentees, late vs shift, missing EODs, and overdue work that needs you.',
     prompt:
-      'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work?',
+      'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work? Explain clearly with names and next steps.',
     Icon: AlertTriangle,
     cta: 'Ask now',
     className: 'lg:col-start-2 lg:col-end-4 lg:row-start-1 lg:row-end-2',
@@ -57,7 +56,8 @@ const SUGGESTED_BENTO = [
     id: 's3',
     name: 'Present / absent / late',
     description: "Live headcount with late minutes vs each person's shift.",
-    prompt: "Who is present, absent, or late today? Include late minutes vs each person's shift.",
+    prompt:
+      "Who is present, absent, or late today? Include late minutes vs each person's shift and summarize in a readable report.",
     Icon: UserCheck,
     cta: 'Ask now',
     className: 'lg:col-start-2 lg:col-end-3 lg:row-start-2 lg:row-end-3',
@@ -73,7 +73,8 @@ const SUGGESTED_BENTO = [
     id: 's4',
     name: 'Full employee status',
     description: 'Attendance, open tasks, EOD, and blockers for one person.',
-    prompt: "Give me Jeevan's full status today — attendance, open tasks, EOD, and any blockers",
+    prompt:
+      "Give me Jeevan's full status today — attendance, open tasks, EOD, and any blockers. Write it like a complete Gemini briefing.",
     Icon: UserRoundSearch,
     cta: 'Ask now',
     className: 'lg:col-start-3 lg:col-end-4 lg:row-start-2 lg:row-end-3',
@@ -89,9 +90,9 @@ const SUGGESTED_BENTO = [
 
 function greetingForNow() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good Morning';
-  if (h < 17) return 'Good Afternoon';
-  return 'Good Evening';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function relativeAgo(iso) {
@@ -107,16 +108,55 @@ function firstName(name) {
   return (name || 'Manager').split(' ')[0];
 }
 
+function normalizeOutgoing(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return '';
+
+  // Mode prefixes from PromptInputBox → clearer instructions for the model
+  const search = raw.match(/^\[Search:\s*([\s\S]*)\]$/i);
+  if (search) {
+    return `Search the hub thoroughly and answer fully like Gemini:\n\n${search[1].trim()}\n\nCover every relevant person/number, then suggest a next step.`;
+  }
+  const think = raw.match(/^\[Think:\s*([\s\S]*)\]$/i);
+  if (think) {
+    return `Think deeply and write a complete, well-structured answer:\n\n${think[1].trim()}\n\nInclude Quick take, detailed sections, risks, and recommended actions.`;
+  }
+  const canvas = raw.match(/^\[Canvas:\s*([\s\S]*)\]$/i);
+  if (canvas) {
+    return `Produce a structured manager report (markdown headings + bullets):\n\n${canvas[1].trim()}\n\nMake it presentation-ready and complete.`;
+  }
+  return raw.slice(0, MAX_CHARS);
+}
+
+function CopyButton({ text }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Copy"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setOk(true);
+          setTimeout(() => setOk(false), 1500);
+        } catch {
+          /* ignore */
+        }
+      }}
+      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#6b7280] transition hover:bg-[#f3f4f6] hover:text-[#111827]"
+    >
+      {ok ? <Check size={12} /> : <Copy size={12} />}
+      {ok ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
 export default function ChatPage() {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [scope, setScope] = useState('All Data');
-  const [scopeOpen, setScopeOpen] = useState(false);
   const bottomRef = useRef(null);
-  const textareaRef = useRef(null);
 
   const inConversation = messages.length > 0;
 
@@ -176,10 +216,8 @@ export default function ChatPage() {
   }, [messages]);
 
   async function send(text) {
-    const message = (text ?? input).trim();
+    const message = normalizeOutgoing(text);
     if (!message || busy) return;
-    if (message.length > MAX_CHARS) return;
-    setInput('');
     setError('');
     setMessages((prev) => [
       ...prev,
@@ -205,7 +243,7 @@ export default function ChatPage() {
         {
           id: `e-${Date.now()}`,
           role: 'assistant',
-          content: `Sorry — ${err.message || 'something went wrong'}.`,
+          content: `I couldn't complete that request just now (${err.message || 'something went wrong'}).\n\nPlease try again — I can still pull attendance, tasks, EODs, and interviews from the hub.`,
         },
       ]);
     } finally {
@@ -220,20 +258,26 @@ export default function ChatPage() {
       /* ignore */
     }
     setMessages([]);
-    setInput('');
     setError('');
   }
 
-  function onKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  }
+  const prompt = (
+    <div className="w-full max-w-[760px]">
+      {error && <p className="mb-2 text-center text-xs text-red-500">{error}</p>}
+      <PromptInputBox
+        isLoading={busy}
+        placeholder="Ask Manager AI anything about your team…"
+        onSend={(message) => send(message)}
+      />
+      <p className="mt-2 text-center text-[11px] text-[#9ca3af]">
+        Manager AI uses live hub data · answers in a full Gemini-style briefing
+      </p>
+    </div>
+  );
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_420px_at_50%_-80px,rgba(167,139,250,0.22),transparent_70%)]" />
+    <div className="relative flex h-full flex-col overflow-hidden bg-[#f7f8fa]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1000px_480px_at_50%_-120px,rgba(15,118,110,0.12),transparent_70%)]" />
 
       {!inConversation ? (
         <div className="relative z-10 flex h-full flex-col overflow-y-auto px-6 pb-10 pt-12 md:px-10">
@@ -243,34 +287,22 @@ export default function ChatPage() {
               <img
                 src="/ai-orb.png"
                 alt=""
-                className="relative h-[108px] w-[108px] rounded-full object-cover shadow-[0_12px_40px_rgba(108,77,255,0.35)]"
+                className="relative h-[96px] w-[96px] rounded-full object-cover shadow-[0_12px_40px_rgba(15,118,110,0.28)]"
               />
             </div>
 
-            <h1 className="text-center text-[32px] font-bold tracking-tight text-brand-ink md:text-[36px]">
+            <h1 className="text-center text-[34px] font-semibold tracking-tight text-[#1f1f2e] md:text-[40px]">
               {greetingForNow()}, {firstName(user?.name)}
             </h1>
-            <p className="mt-2 max-w-[720px] text-center text-[15px] text-mute">
-              Real-time co-pilot for attendance, tasks, EODs, and hiring — ask anything about your team.
+            <p className="mt-2 max-w-[640px] text-center text-[15px] leading-relaxed text-[#6b7280]">
+              Your Gemini-style co-pilot for attendance, tasks, EODs, and hiring — ask anything and get a
+              complete, readable answer from the hub.
             </p>
 
-            <PromptCard
-              input={input}
-              setInput={setInput}
-              busy={busy}
-              error={error}
-              scope={scope}
-              setScope={setScope}
-              scopeOpen={scopeOpen}
-              setScopeOpen={setScopeOpen}
-              onSend={() => send()}
-              onKeyDown={onKeyDown}
-              textareaRef={textareaRef}
-              className="mt-8 w-full max-w-[720px]"
-            />
+            <div className="mt-8 w-full max-w-[760px]">{prompt}</div>
 
-            <div className="mt-10 w-full">
-              <h2 className="mb-4 text-[17px] font-semibold text-ink">Your recents chats</h2>
+            <div className="mt-12 w-full">
+              <h2 className="mb-4 text-[15px] font-medium text-[#6b7280]">Suggested for you</h2>
               <BentoGrid className="lg:grid-rows-2">
                 {recentBento.map((card) => (
                   <BentoCard
@@ -290,57 +322,75 @@ export default function ChatPage() {
         </div>
       ) : (
         <div className="relative z-10 flex h-full flex-col">
-          <header className="flex items-center justify-between border-b border-edge/80 bg-white/70 px-5 py-3.5 backdrop-blur">
+          <header className="flex items-center justify-between border-b border-[#e8eaed]/80 bg-white/75 px-5 py-3 backdrop-blur">
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-medium text-ink-soft hover:bg-brand-mist hover:text-brand"
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#202124]"
             >
               <ArrowLeft size={16} /> New chat
             </button>
-            <div className="flex items-center gap-2 text-sm font-semibold text-brand-ink">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#202124]">
               <img src="/ai-orb.png" alt="" className="h-7 w-7 rounded-full" />
               Manager AI
             </div>
-            <div className="w-[88px]" />
+            <div className="w-[96px]" />
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-10">
-            <div className="mx-auto max-w-[720px] space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto max-w-[800px] space-y-8">
               {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {m.role !== 'user' && (
-                    <img
-                      src="/ai-orb.png"
-                      alt=""
-                      className="mr-3 mt-1 h-8 w-8 shrink-0 rounded-full"
-                    />
-                  )}
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed ${
-                      m.role === 'user'
-                        ? 'whitespace-pre-wrap rounded-br-md bg-brand text-white shadow-[0_8px_20px_rgba(15,118,110,0.25)]'
-                        : 'rounded-bl-md border border-edge bg-white text-ink shadow-card'
-                    }`}
-                  >
-                    {m.role === 'user' ? (
-                      m.content
-                    ) : (
-                      <div className="md-reply">
-                        <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div key={m.id} className="group">
+                  {m.role === 'user' ? (
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] rounded-[22px] rounded-br-md bg-[#e8f0fe] px-4 py-3 text-[15px] leading-relaxed text-[#1a73e8] shadow-sm">
+                        <div className="whitespace-pre-wrap text-[#202124]">{m.content}</div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3">
+                      <img
+                        src="/ai-orb.png"
+                        alt=""
+                        className="mt-1 h-8 w-8 shrink-0 rounded-full shadow-sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-[13px] font-semibold text-[#202124]">Manager AI</span>
+                          <CopyButton text={m.content} />
+                        </div>
+                        <div className="gemini-reply text-[15px] leading-[1.7] text-[#3c4043]">
+                          <ReactMarkdown>{m.content}</ReactMarkdown>
+                        </div>
+                        {m.toolsUsed?.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {m.toolsUsed.map((t) => (
+                              <span
+                                key={t}
+                                className="rounded-full bg-[#f1f3f4] px-2 py-0.5 text-[10px] font-medium text-[#5f6368]"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
+
               {busy && (
-                <div className="flex items-start">
-                  <img src="/ai-orb.png" alt="" className="mr-3 h-8 w-8 rounded-full" />
-                  <div className="rounded-2xl rounded-bl-md border border-edge bg-white px-4 py-3 text-sm text-mute shadow-card">
-                    Thinking…
+                <div className="flex gap-3">
+                  <img src="/ai-orb.png" alt="" className="mt-1 h-8 w-8 rounded-full" />
+                  <div>
+                    <div className="mb-1 text-[13px] font-semibold text-[#202124]">Manager AI</div>
+                    <div className="flex items-center gap-1.5 text-sm text-[#5f6368]">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#0F766E]" />
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#0F766E] [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#0F766E] [animation-delay:300ms]" />
+                      <span className="ml-1">Thinking…</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -348,114 +398,11 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <div className="border-t border-edge/80 bg-white/80 px-5 py-4 backdrop-blur md:px-10">
-            <PromptCard
-              input={input}
-              setInput={setInput}
-              busy={busy}
-              error={error}
-              scope={scope}
-              setScope={setScope}
-              scopeOpen={scopeOpen}
-              setScopeOpen={setScopeOpen}
-              onSend={() => send()}
-              onKeyDown={onKeyDown}
-              textareaRef={textareaRef}
-              className="mx-auto max-w-[720px]"
-              compact
-            />
+          <div className="border-t border-[#e8eaed]/80 bg-gradient-to-t from-white via-white/95 to-white/70 px-4 py-4 backdrop-blur md:px-8">
+            <div className="mx-auto flex justify-center">{prompt}</div>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function PromptCard({
-  input,
-  setInput,
-  busy,
-  error,
-  scope,
-  setScope,
-  scopeOpen,
-  setScopeOpen,
-  onSend,
-  onKeyDown,
-  textareaRef,
-  className = '',
-  compact = false,
-}) {
-  const scopes = ['All Data', 'Employees', 'Attendance', 'Candidates', 'Interviews'];
-
-  return (
-    <div className={className}>
-      {error && <p className="mb-2 text-center text-xs text-red-500">{error}</p>}
-      <div className={`prompt-card ${compact ? 'p-3' : 'p-4 md:p-5'}`}>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-[13px] font-medium text-mute">
-            <Sparkles size={16} className="text-brand" />
-            Ask whatever you want
-          </div>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setScopeOpen((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-canvas px-3 py-1.5 text-[12px] font-medium text-ink-soft hover:border-brand/30"
-            >
-              <Globe size={13} className="text-brand" />
-              {scope}
-              <ChevronDown size={13} />
-            </button>
-            {scopeOpen && (
-              <div className="absolute right-0 z-30 mt-1.5 min-w-[140px] overflow-hidden rounded-xl border border-edge bg-white py-1 shadow-card">
-                {scopes.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-brand-mist ${
-                      s === scope ? 'font-semibold text-brand' : 'text-ink-soft'
-                    }`}
-                    onClick={() => {
-                      setScope(s);
-                      setScopeOpen(false);
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value.slice(0, MAX_CHARS))}
-          onKeyDown={onKeyDown}
-          rows={compact ? 2 : 4}
-          disabled={busy}
-          placeholder=""
-          className="w-full resize-none border-0 bg-transparent text-[15px] text-ink outline-none placeholder:text-mute disabled:opacity-60"
-        />
-
-        <div className="mt-2 flex items-center justify-end gap-3 border-t border-edge/70 pt-3">
-          <span className="text-[12px] tabular-nums text-mute">
-            {input.length}/{MAX_CHARS}
-          </span>
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={busy || !input.trim()}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white shadow-[0_8px_18px_rgba(15,118,110,0.35)] transition hover:bg-brand-deep disabled:opacity-40"
-            aria-label="Send"
-          >
-            <Send size={16} />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

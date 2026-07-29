@@ -75,7 +75,116 @@ body {
   color: #0f766e;
 }
 
-/* AI reply markdown */
+/* Gemini-style assistant replies */
+.gemini-reply {
+  font-size: 15px;
+  line-height: 1.7;
+  color: #3c4043;
+}
+
+.gemini-reply > *:first-child {
+  margin-top: 0;
+}
+
+.gemini-reply > *:last-child {
+  margin-bottom: 0;
+}
+
+.gemini-reply p {
+  margin: 0 0 0.85em;
+}
+
+.gemini-reply p:last-child {
+  margin-bottom: 0;
+}
+
+.gemini-reply strong {
+  font-weight: 650;
+  color: #202124;
+}
+
+.gemini-reply em {
+  font-style: italic;
+}
+
+.gemini-reply ul,
+.gemini-reply ol {
+  margin: 0.4em 0 0.9em;
+  padding-left: 1.35rem;
+}
+
+.gemini-reply li {
+  margin: 0.35em 0;
+}
+
+.gemini-reply li::marker {
+  color: #0f766e;
+}
+
+.gemini-reply h1,
+.gemini-reply h2,
+.gemini-reply h3 {
+  font-weight: 650;
+  color: #202124;
+  margin: 1.1em 0 0.45em;
+  line-height: 1.35;
+}
+
+.gemini-reply h1 { font-size: 1.2em; }
+.gemini-reply h2 { font-size: 1.08em; }
+.gemini-reply h3 { font-size: 1.02em; }
+
+.gemini-reply code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: #f1f3f4;
+  color: #0f766e;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.gemini-reply pre {
+  margin: 0.6em 0;
+  padding: 0.85rem 1rem;
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.gemini-reply pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.gemini-reply a {
+  color: #0f766e;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gemini-reply table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0 1em;
+  font-size: 0.92em;
+}
+
+.gemini-reply th,
+.gemini-reply td {
+  border: 1px solid #e8eaed;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+}
+
+.gemini-reply th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #202124;
+}
+
+/* AI reply markdown (legacy) */
 .md-reply {
   font-size: 14px;
   line-height: 1.55;

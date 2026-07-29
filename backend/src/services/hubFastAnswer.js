@@ -61,14 +61,19 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const absentees = data?.absentees || data?.attendance?.absent || [];
       const lateList = data?.late || data?.attendance?.late || [];
       const reply =
-        `Quick take: Team pulse for **${data?.date || todayIst}** (IST).\n\n` +
-        `• Attendance — Present **${present}**, Late **${late}**, Absent **${absent}**\n` +
-        `• Absentees: ${listNames(absentees)}\n` +
-        `• Late: ${listNames(lateList)}\n` +
-        `• Missing EODs: ${listNames(data?.missing_eods || data?.missingEods || [])}\n` +
-        `• Overdue tasks: **${data?.overdue_count ?? data?.overdueTasks?.length ?? 0}**\n` +
-        `• Interviews today: **${data?.interview_count ?? data?.interviews?.length ?? 0}**\n\n` +
-        `Want me to zoom into anyone?`;
+        `## Quick take\n` +
+        `Team pulse for **${data?.date || todayIst}** (IST).\n\n` +
+        `## Attendance\n` +
+        `- Present **${present}** · Late **${late}** · Absent **${absent}**\n` +
+        `- Absentees: ${listNames(absentees)}\n` +
+        `- Late arrivals: ${listNames(lateList)}\n\n` +
+        `## Work & hiring\n` +
+        `- Missing EODs: ${listNames(data?.missing_eods || data?.missingEods || [])}\n` +
+        `- Overdue tasks: **${data?.overdue_count ?? data?.overdueTasks?.length ?? 0}**\n` +
+        `- Interviews today: **${data?.interview_count ?? data?.interviews?.length ?? 0}**\n\n` +
+        `## What you can do next\n` +
+        `- Ask me to zoom into any name above\n` +
+        `- Ask “who was absent yesterday?” for yesterday’s roll-call`;
       return { handled: true, reply, toolsUsed };
     }
 
@@ -77,11 +82,20 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `Quick take: Nobody marked **Absent** on **${yesterdayIst}** (IST) in the hub.\n\n` +
-            `If that feels off, sync may still be catching up — ask again shortly or check Data Sync.`
-          : `Quick take: **${rows.length}** absent on **${yesterdayIst}** (IST).\n\n` +
-            rows.map((r) => `• **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n') +
-            `\n\nWant today’s attendance roll-call next?`;
+          ? `## Quick take\n` +
+            `Nobody was marked **Absent** on **${yesterdayIst}** (IST) in the hub.\n\n` +
+            `## Details\n` +
+            `I checked attendance days for yesterday. If that feels incomplete, sync may still be catching up.\n\n` +
+            `## What you can do next\n` +
+            `- Ask for **today’s** present / late / absent\n` +
+            `- Open **Data Sync** and run Attendance sync`
+          : `## Quick take\n` +
+            `**${rows.length}** people were absent on **${yesterdayIst}** (IST).\n\n` +
+            `## Absentees\n` +
+            rows.map((r) => `- **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n') +
+            `\n\n## What you can do next\n` +
+            `- Ask for today’s attendance roll-call\n` +
+            `- Ask for full status on any name above`;
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
@@ -91,10 +105,20 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `Quick take: No absentees on **${date}** (IST).\n\nEveryone looks present or not marked Absent in the hub.`
-          : `Quick take: **${rows.length}** absent on **${date}** (IST).\n\n` +
-            rows.map((r) => `• **${r.name}**`).join('\n') +
-            `\n\nWant late arrivals vs shift too?`;
+          ? `## Quick take\n` +
+            `No absentees on **${date}** (IST).\n\n` +
+            `## Details\n` +
+            `Everyone looks present or not marked Absent in the hub for this date.\n\n` +
+            `## What you can do next\n` +
+            `- Ask for late arrivals vs shift\n` +
+            `- Ask for yesterday’s absentees`
+          : `## Quick take\n` +
+            `**${rows.length}** absent on **${date}** (IST).\n\n` +
+            `## Absentees\n` +
+            rows.map((r) => `- **${r.name}**`).join('\n') +
+            `\n\n## What you can do next\n` +
+            `- Ask for late arrivals vs each person’s shift\n` +
+            `- Ask for a full status on any name`;
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
@@ -104,11 +128,15 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const late = data?.late || [];
       const absent = data?.absent || [];
       const reply =
-        `Quick take: Attendance for **${data?.date || todayIst}** (IST).\n\n` +
-        `• Present (**${present.length}**): ${listNames(present)}\n` +
-        `• Late (**${late.length}**): ${listNames(late)}\n` +
-        `• Absent (**${absent.length}**): ${listNames(absent)}\n\n` +
-        `I can break down late minutes vs each person’s shift if you want.`;
+        `## Quick take\n` +
+        `Attendance for **${data?.date || todayIst}** (IST).\n\n` +
+        `## Headcount\n` +
+        `- **Present (${present.length}):** ${listNames(present)}\n` +
+        `- **Late (${late.length}):** ${listNames(late)}\n` +
+        `- **Absent (${absent.length}):** ${listNames(absent)}\n\n` +
+        `## What you can do next\n` +
+        `- Ask me to break down late minutes vs each person’s shift\n` +
+        `- Ask for absentees yesterday`;
       return { handled: true, reply, toolsUsed: ['getAttendanceToday'] };
     }
   } catch (err) {
