@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { query } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { getManagerScope, candidateAclClause } from '../services/scope.js';
-import { runFullSync } from '../sync/index.js';
 import { asUuid, asString, asDateYmd, asTaskStatus, asInt } from '../utils/validate.js';
 import { logServerError, safeClientError } from '../utils/safeError.js';
 
@@ -690,6 +689,7 @@ router.post('/sync/run', requireAuth, requireAdmin, async (req, res) => {
       ? [source]
       : ['sprintboard', 'ats', 'attendance'];
 
+    const { runFullSync } = await import('../sync/index.js');
     const result = await runFullSync({ sources });
     res.json(result);
   } catch (err) {
