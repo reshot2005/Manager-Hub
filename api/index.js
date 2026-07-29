@@ -322,7 +322,7 @@ export default async function handler(req, res) {
     if (path === '/api/health' || path === '/health') {
       return sendJson(res, 200, {
         ok: true,
-        deploy: '2026-07-29-v11-lean-data-api',
+        deploy: '2026-07-29-v12-direct-data',
         time: new Date().toISOString(),
         runtime: 'vercel',
         hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
@@ -363,6 +363,35 @@ export default async function handler(req, res) {
       return handleChatHistory(req, res, method);
     }
 
+    // Data pages (employees/dashboard/…) — Express hangs on Vercel; serve Neon-direct
+    if (
+      path.startsWith('/api/employees') ||
+      path.startsWith('/api/dashboard') ||
+      path.startsWith('/api/tasks') ||
+      path.startsWith('/api/eod-reports') ||
+      path.startsWith('/api/candidates') ||
+      path.startsWith('/api/interviews') ||
+      path.startsWith('/api/attendance') ||
+      path.startsWith('/api/sync/')
+    ) {
+      try {
+        if (method === 'PATCH' || method === 'POST' || method === 'PUT') {
+          req.body = await readJsonBody(req);
+        }
+        const manager = await resolveManager(req);
+        const { handleDirectDataApi } = await import('../backend/src/directDataApi.js');
+        const result = await handleDirectDataApi(req, manager);
+        if (result.handled) {
+          return sendJson(res, result.status || 200, result.body);
+        }
+      } catch (err) {
+        console.error('[data]', err?.message || err);
+        return sendJson(res, err.status || 500, {
+          message: err.message || 'Failed to load data',
+        });
+      }
+    }
+
     try {
       const expressHandler = await Promise.race([
         getExpressHandler(),
@@ -376,7 +405,7 @@ export default async function handler(req, res) {
         return sendJson(res, 503, {
           ok: false,
           message: 'API is warming up. Retry this page shortly.',
-          deploy: '2026-07-29-v11-lean-data-api',
+          deploy: '2026-07-29-v12-direct-data',
         });
       }
       throw err;
