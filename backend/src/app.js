@@ -1,14 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import authRoutes from './routes/authRoutes.js';
-import chatRoutes from './routes/chatRoutes.js';
-import dataRoutes from './routes/dataRoutes.js';
 import { ensureBootstrap } from './services/bootstrap.js';
 import { securityHeaders, enforceHttps } from './middleware/security.js';
 import { globalApiLimiter } from './middleware/rateLimits.js';
 import { logServerError, safeClientError } from './utils/safeError.js';
-import { runHubBackup } from './services/backup.js';
 
 async function assertCronAuthorized(req, res) {
   const secret = process.env.CRON_SECRET || '';
@@ -44,9 +40,7 @@ async function assertCronAuthorized(req, res) {
 async function handleCronSync(req, res) {
   try {
     if (!(await assertCronAuthorized(req, res))) return;
-
     await ensureBootstrap({ light: false });
-
     const { runFullSync } = await import('./sync/index.js');
     const source = req.body?.source || req.query?.source;
     const allowedSources = ['sprintboard', 'ats', 'attendance'];
@@ -65,6 +59,7 @@ async function handleCronSync(req, res) {
 async function handleCronBackup(req, res) {
   try {
     if (!(await assertCronAuthorized(req, res))) return;
+    const { runHubBackup } = await import('./services/backup.js');
     const result = await runHubBackup({ trigger: 'cron' });
     res.json(result);
   } catch (err) {
@@ -88,19 +83,14 @@ function buildCorsOrigin() {
     .filter(Boolean)
     .filter((o) => o !== '*');
 
-  // Production: never allow * — require explicit origins
   if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-    if (!origins.length) {
-      console.warn('[cors] CORS_ORIGIN empty in production — only same-origin / no Origin allowed');
-    }
     return (origin, cb) => {
-      if (!origin) return cb(null, true); // same-origin / server-to-server
+      if (!origin) return cb(null, true);
       if (origins.includes(origin)) return cb(null, true);
       return cb(new Error('CORS blocked'), false);
     };
   }
 
-  // Local: default to Vite + allow configured list
   const localDefaults = ['http://localhost:5173', 'http://127.0.0.1:5173'];
   const allow = origins.length ? origins : localDefaults;
   return (origin, cb) => {
@@ -110,45 +100,11 @@ function buildCorsOrigin() {
 }
 
 /**
- * Shared Express app for local server + Vercel serverless.
+ * Shared Express app. Routes are required lazily to avoid Vercel cold-start hangs.
  */
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
-
-  // Instant liveness — no DB (use this to confirm a deploy is live)
-  app.get('/api/health', (req, res) => {
-    res.status(200).json({
-      ok: true,
-      service: 'manager-hub',
-      deploy: '2026-07-29-ssl-fix',
-      time: new Date().toISOString(),
-      runtime: process.env.VERCEL ? 'vercel' : 'node',
-      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-      hasJwtSecret: Boolean(process.env.JWT_SECRET),
-    });
-  });
-
-  app.get('/api/health/db', async (_req, res) => {
-    const started = Date.now();
-    try {
-      const { query } = await import('./config/db.js');
-      const r = await Promise.race([
-        query('select 1::int as ok'),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('db timeout')), 5_000)
-        ),
-      ]);
-      res.json({ ok: true, db: r.rows[0], ms: Date.now() - started });
-    } catch (err) {
-      logServerError('[health/db]', err);
-      res.status(503).json({
-        ok: false,
-        error: 'database_unreachable',
-        ms: Date.now() - started,
-      });
-    }
-  });
 
   app.use(enforceHttps);
   app.use(securityHeaders());
@@ -165,20 +121,13 @@ export function createApp() {
   app.use(async (req, res, next) => {
     const p = req.path || '';
     if (!p.startsWith('/api')) return next();
-    // Never block health or auth on bootstrap
-    if (
-      p === '/api/health' ||
-      p.startsWith('/api/health') ||
-      p.startsWith('/api/auth')
-    ) {
+    if (p.startsWith('/api/health') || p.startsWith('/api/auth') || p.startsWith('/api/sync/cron') || p.startsWith('/api/backup/cron')) {
       return next();
     }
     try {
       await Promise.race([
         ensureBootstrap({ light: true }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('bootstrap timeout')), 8_000)
-        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('bootstrap timeout')), 8_000)),
       ]);
     } catch (err) {
       console.warn('[bootstrap middleware]', err.message?.slice(0, 120));
@@ -191,9 +140,44 @@ export function createApp() {
   app.post('/api/backup/cron', handleCronBackup);
   app.get('/api/backup/cron', handleCronBackup);
 
-  app.use('/api/auth', authRoutes);
-  app.use('/api/chat', chatRoutes);
-  app.use('/api', dataRoutes);
+  // Lazy-mount heavy routers on first use
+  let routesReady = null;
+  async function ensureRoutes() {
+    if (routesReady) return routesReady;
+    routesReady = (async () => {
+      const [{ default: authRoutes }, { default: chatRoutes }, { default: dataRoutes }] =
+        await Promise.all([
+          import('./routes/authRoutes.js'),
+          import('./routes/chatRoutes.js'),
+          import('./routes/dataRoutes.js'),
+        ]);
+      app.use('/api/auth', authRoutes);
+      app.use('/api/chat', chatRoutes);
+      app.use('/api', dataRoutes);
+    })();
+    return routesReady;
+  }
+
+  app.use(async (req, res, next) => {
+    if (!req.path?.startsWith('/api')) return next();
+    if (
+      req.path.startsWith('/api/sync/cron') ||
+      req.path.startsWith('/api/backup/cron') ||
+      req.path.startsWith('/api/health')
+    ) {
+      return next();
+    }
+    try {
+      await Promise.race([
+        ensureRoutes(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('routes timeout')), 10_000)),
+      ]);
+      next();
+    } catch (err) {
+      logServerError('[routes]', err);
+      res.status(503).json({ message: 'API routes warming up — retry shortly' });
+    }
+  });
 
   app.use((err, _req, res, _next) => {
     logServerError('[unhandled]', err);
