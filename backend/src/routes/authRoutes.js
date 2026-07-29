@@ -94,8 +94,14 @@ router.post('/login', authLimiter, async (req, res) => {
     );
 
     const accessToken = signAccessToken(manager);
-    const { refreshToken } = await issueRefreshToken(manager.id, clientMeta(req));
-    setAuthCookies(res, accessToken, refreshToken);
+    let refreshToken = null;
+    try {
+      ({ refreshToken } = await issueRefreshToken(manager.id, clientMeta(req)));
+      if (refreshToken) setAuthCookies(res, accessToken, refreshToken);
+    } catch (err) {
+      // Still allow login if refresh table not migrated yet
+      logServerError('[auth/login refresh]', err);
+    }
 
     res.json({
       token: accessToken,

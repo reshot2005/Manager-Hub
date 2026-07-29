@@ -1,11 +1,8 @@
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import { createApp } from '../backend/src/app.js';
 import serverless from 'serverless-http';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, '../backend/.env') });
+// On Vercel, env vars are injected by the platform (no .env file).
+// Local `npm run dev` still loads backend/.env via backend/src/config/db.js.
 
 const app = createApp();
 
