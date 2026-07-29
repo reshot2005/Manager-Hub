@@ -45,7 +45,7 @@ async function handleCronSync(req, res) {
   try {
     if (!(await assertCronAuthorized(req, res))) return;
 
-    await ensureBootstrap();
+    await ensureBootstrap({ light: false });
 
     const { runFullSync } = await import('./sync/index.js');
     const source = req.body?.source || req.query?.source;

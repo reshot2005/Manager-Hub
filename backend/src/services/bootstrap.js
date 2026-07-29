@@ -15,44 +15,68 @@ async function runSqlFile(name) {
   await query(sql);
 }
 
+async function tablesReady() {
+  const { rows } = await query(`
+    SELECT
+      to_regclass('public.managers') IS NOT NULL AS managers,
+      to_regclass('public.refresh_tokens') IS NOT NULL AS refresh_tokens
+  `);
+  return rows[0];
+}
+
 /**
- * Idempotent: schema migrations + manager seed + ACL link.
- * Safe to call on every cold start / cron / deploy.
+ * Idempotent: schema migrations + manager seed.
+ * On Vercel request path: if schema already exists, skip heavy SQL + ACL linking
+ * (ACL is refreshed by sync/cron instead) so login stays fast.
  */
-export async function ensureBootstrap() {
+export async function ensureBootstrap({ light = Boolean(process.env.VERCEL) } = {}) {
   if (bootstrapped) return { ok: true, skipped: true };
   if (bootstrapping) return bootstrapping;
 
   bootstrapping = (async () => {
-    // Schema (IF NOT EXISTS) — keeps Neon hub tables current
-    await runSqlFile('schema.sql');
-    try {
-      await runSqlFile('migrate_acl.sql');
-    } catch (err) {
-      console.warn('[bootstrap] ACL:', err.message);
+    const ready = await tablesReady().catch(() => ({ managers: false, refresh_tokens: false }));
+
+    if (!ready.managers) {
+      await runSqlFile('schema.sql');
+    } else if (!light) {
+      // Local / cron: keep migrations current
+      await runSqlFile('schema.sql');
     }
-    try {
-      await runSqlFile('migrate_attendance.sql');
-    } catch (err) {
-      console.warn('[bootstrap] attendance:', err.message);
-    }
-    try {
-      await runSqlFile('migrate_shifts.sql');
-    } catch (err) {
-      console.warn('[bootstrap] shifts:', err.message);
-    }
+
+    // Always try lightweight security migration (IF NOT EXISTS)
     try {
       await runSqlFile('migrate_security.sql');
     } catch (err) {
-      console.warn('[bootstrap] security:', err.message);
+      console.warn('[bootstrap] security:', err.message?.slice(0, 120));
+    }
+
+    if (!light) {
+      try {
+        await runSqlFile('migrate_acl.sql');
+      } catch (err) {
+        console.warn('[bootstrap] ACL:', err.message?.slice(0, 120));
+      }
+      try {
+        await runSqlFile('migrate_attendance.sql');
+      } catch (err) {
+        console.warn('[bootstrap] attendance:', err.message?.slice(0, 120));
+      }
+      try {
+        await runSqlFile('migrate_shifts.sql');
+      } catch (err) {
+        console.warn('[bootstrap] shifts:', err.message?.slice(0, 120));
+      }
     }
 
     const manager = await ensureManagerSeed();
-    if (manager?.id) await linkAdminAcl(manager.id);
+    // Heavy ACL fan-out only outside hot request path (sync/cron/local)
+    if (manager?.id && !light) {
+      await linkAdminAcl(manager.id);
+    }
 
     bootstrapped = true;
-    console.log('[bootstrap] hub ready · manager', manager.email);
-    return { ok: true, manager: { email: manager.email, role: manager.role } };
+    console.log('[bootstrap] hub ready · manager', manager?.email || '(none)', light ? '(light)' : '');
+    return { ok: true, light, manager: manager?.email ? { email: manager.email, role: manager.role } : null };
   })();
 
   try {
@@ -78,7 +102,7 @@ export async function ensureManagerSeed() {
       const passwordHash = await hashPassword(password);
       await query(
         `UPDATE managers SET password_hash = $2, name = $3, role = 'ADMIN',
-           is_active = TRUE, token_version = token_version + 1, updated_at = NOW()
+           is_active = TRUE, token_version = COALESCE(token_version, 0) + 1, updated_at = NOW()
          WHERE id = $1`,
         [manager.id, passwordHash, name]
       );
@@ -94,7 +118,6 @@ export async function ensureManagerSeed() {
     return manager;
   }
 
-  // Never invent a default production password — require explicit SEED_MANAGER_PASSWORD
   if (!password) {
     if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
       console.warn('[bootstrap] No manager seed — set SEED_MANAGER_PASSWORD once to create admin');

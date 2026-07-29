@@ -1,11 +1,12 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { normalizeDatabaseUrl } from './dbUrl.js';
 
 dotenv.config();
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
 function needsSsl(url) {
   if (!url) return false;
@@ -17,21 +18,24 @@ function needsSsl(url) {
   return Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
 }
 
+const isServerless = Boolean(process.env.VERCEL);
+
 const pool = new Pool({
   connectionString,
   ssl: needsSsl(connectionString)
     ? {
-        // Set DB_SSL_REJECT_UNAUTHORIZED=true once CA bundle is configured (Neon/AWS RDS).
+        // Neon works with rejectUnauthorized:false in serverless; enable strict via env when CA is set.
         rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
       }
     : false,
-  max: process.env.VERCEL ? 3 : 10,
-  idleTimeoutMillis: process.env.VERCEL ? 10_000 : 30_000,
-  connectionTimeoutMillis: process.env.VERCEL ? 8_000 : 20_000,
+  max: isServerless ? 1 : 10,
+  idleTimeoutMillis: isServerless ? 5_000 : 30_000,
+  connectionTimeoutMillis: isServerless ? 5_000 : 15_000,
+  allowExitOnIdle: isServerless,
 });
 
 pool.on('error', (err) => {
-  console.error('[db] unexpected pool error', err);
+  console.error('[db] unexpected pool error', err.message?.slice(0, 200));
 });
 
 export async function query(text, params) {

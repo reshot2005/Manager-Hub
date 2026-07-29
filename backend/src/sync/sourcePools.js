@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { normalizeDatabaseUrl } from '../config/dbUrl.js';
 
 const { Pool } = pg;
 
@@ -7,9 +8,10 @@ const { Pool } = pg;
  */
 function makePool(connectionString, label) {
   if (!connectionString) return null;
+  const url = normalizeDatabaseUrl(connectionString);
   const pool = new Pool({
-    connectionString,
-    ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
+    connectionString: url,
+    ssl: url.includes('localhost') || url.includes('127.0.0.1')
       ? false
       : {
           rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true',
@@ -18,13 +20,11 @@ function makePool(connectionString, label) {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 20_000,
     statement_timeout: 60_000,
-    // Application name helps DB auditors distinguish sync vs app traffic
     application_name: `manager-hub-sync-${label}`,
   });
   pool.on('error', (err) => console.error(`[source-db:${label}]`, err.message));
   return pool;
 }
-
 let sprintboardPool;
 let atsPool;
 let attendancePool;
