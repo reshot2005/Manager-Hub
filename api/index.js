@@ -322,12 +322,13 @@ export default async function handler(req, res) {
     if (path === '/api/health' || path === '/health') {
       return sendJson(res, 200, {
         ok: true,
-        deploy: '2026-07-29-v9-chat-direct',
+        deploy: '2026-07-29-v10-hub-first-chat',
         time: new Date().toISOString(),
         runtime: 'vercel',
         hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
         hasJwtSecret: Boolean(process.env.JWT_SECRET),
         hasGemini: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key'),
+        geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
       });
     }
 
@@ -375,7 +376,7 @@ export default async function handler(req, res) {
         return sendJson(res, 503, {
           ok: false,
           message: 'API is warming up. Retry this page shortly.',
-          deploy: '2026-07-29-v9-chat-direct',
+          deploy: '2026-07-29-v10-hub-first-chat',
         });
       }
       throw err;

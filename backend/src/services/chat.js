@@ -5,6 +5,7 @@ import {
   buildManagerAiSystemInstruction,
   buildUserTurnWithContext,
 } from './managerAiPrompt.js';
+import { tryHubFastAnswer } from './hubFastAnswer.js';
 
 const TYPE_MAP = {
   OBJECT: SchemaType.OBJECT,
@@ -59,13 +60,17 @@ function yesterdayIst(todayIst) {
   return `${y}-${m}-${day}`;
 }
 
-function getModel() {
+function modelCandidates() {
+  const preferred = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  return [...new Set([preferred, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'])];
+}
+
+function getModel(modelName) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your_gemini_api_key') {
     throw new Error('GEMINI_API_KEY is not configured');
   }
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
   return genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: buildManagerAiSystemInstruction(),
@@ -132,8 +137,8 @@ function friendlyFromTools(toolTrace, userMessage) {
   const names = toolTrace.map((t) => t.name).filter(Boolean);
   if (!names.length) {
     return (
-      `Quick take: I started on **"${userMessage.slice(0, 80)}"** but ran out of time before tools finished.\n\n` +
-      `Please ask once more — for absentees say *“who was absent yesterday”* and I’ll use getAbsentees with yesterday’s IST date.`
+      `Quick take: I started on **"${userMessage.slice(0, 80)}"** but couldn’t finish the AI write-up.\n\n` +
+      `Try a clear ops question like *“who was absent yesterday”* or *“today’s briefing”* — I can still answer those straight from the hub.`
     );
   }
   return (
@@ -142,10 +147,7 @@ function friendlyFromTools(toolTrace, userMessage) {
   );
 }
 
-/**
- * Manager AI chat — optimized for Vercel (bounded rounds + wall-clock budget).
- */
-export async function chatWithGemini(manager, userMessage) {
+async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
   const onVercel = Boolean(process.env.VERCEL);
   const maxRounds = onVercel ? 5 : 12;
   const wallMs = onVercel ? 45_000 : 90_000;
@@ -154,104 +156,123 @@ export async function chatWithGemini(manager, userMessage) {
   const started = Date.now();
   const remaining = () => Math.max(1_500, wallMs - (Date.now() - started));
 
-  const model = getModel();
   const history = await loadHistory(manager.id, onVercel ? 6 : 12);
-  const { todayIst, nowIst } = nowInIst();
-  const yIst = yesterdayIst(todayIst);
-
-  const chat = model.startChat({
-    history: history.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    })),
-  });
-
-  const toolTrace = [];
   const contextualMessage = buildUserTurnWithContext(userMessage, {
     todayIst,
     nowIst,
     yesterdayIst: yIst,
   });
 
-  let result;
-  let response;
-  try {
-    result = await withTimeout(
-      chat.sendMessage(contextualMessage),
-      Math.min(geminiMs, remaining()),
-      'gemini_first'
-    );
-    response = result.response;
-  } catch (err) {
-    const text =
-      `Quick take: I couldn’t reach the AI model just now (${String(err.message || err).slice(0, 80)}).\n\n` +
-      `Please try again in a moment — I’m here to explain attendance, tasks, EODs, and interviews from the hub.`;
-    await persistTurn(manager.id, userMessage, text, toolTrace);
-    return { reply: text, toolsUsed: [], toolTrace };
-  }
-
-  for (let i = 0; i < maxRounds; i++) {
-    if (remaining() < 4_000) break;
-
-    const calls = response.functionCalls?.() || [];
-    if (!calls.length) break;
-
-    const functionResponses = await Promise.all(
-      calls.map(async (call) => {
-        const args = call.args || {};
-        let toolResult;
-        try {
-          toolResult = await withTimeout(
-            executeTool(call.name, args, manager),
-            Math.min(toolMs, remaining() - 2_000),
-            `tool_${call.name}`
-          );
-        } catch (err) {
-          toolResult = {
-            error: 'Tool timed out or failed',
-            detail: String(err.message || err).slice(0, 160),
-            hint: 'Retry with a narrower question (e.g. absentees for one date).',
-          };
-        }
-        toolTrace.push({
-          name: call.name,
-          argKeys: Object.keys(args || {}),
-        });
-        return {
-          functionResponse: {
-            name: call.name,
-            response: toolResult,
-          },
-        };
-      })
-    );
-
+  let lastErr = null;
+  for (const modelName of modelCandidates()) {
+    if (remaining() < 5_000) break;
     try {
-      result = await withTimeout(
-        chat.sendMessage(functionResponses),
+      const model = getModel(modelName);
+      const chat = model.startChat({
+        history: history.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+      });
+
+      const toolTrace = [];
+      let result = await withTimeout(
+        chat.sendMessage(contextualMessage),
         Math.min(geminiMs, remaining()),
-        'gemini_tool_round'
+        'gemini_first'
       );
-      response = result.response;
-    } catch {
-      break;
+      let response = result.response;
+
+      for (let i = 0; i < maxRounds; i++) {
+        if (remaining() < 4_000) break;
+        const calls = response.functionCalls?.() || [];
+        if (!calls.length) break;
+
+        const functionResponses = await Promise.all(
+          calls.map(async (call) => {
+            const args = call.args || {};
+            let toolResult;
+            try {
+              toolResult = await withTimeout(
+                executeTool(call.name, args, manager),
+                Math.min(toolMs, remaining() - 2_000),
+                `tool_${call.name}`
+              );
+            } catch (err) {
+              toolResult = {
+                error: 'Tool timed out or failed',
+                detail: String(err.message || err).slice(0, 160),
+              };
+            }
+            toolTrace.push({ name: call.name, argKeys: Object.keys(args || {}) });
+            return {
+              functionResponse: { name: call.name, response: toolResult },
+            };
+          })
+        );
+
+        result = await withTimeout(
+          chat.sendMessage(functionResponses),
+          Math.min(geminiMs, remaining()),
+          'gemini_tool_round'
+        );
+        response = result.response;
+      }
+
+      let text;
+      try {
+        text = response?.text?.() || null;
+      } catch {
+        text = null;
+      }
+      if (!text || !String(text).trim()) {
+        text = friendlyFromTools(toolTrace, userMessage);
+      }
+      return { reply: text, toolsUsed: toolTrace.map((t) => t.name), toolTrace, modelName };
+    } catch (err) {
+      lastErr = err;
+      console.warn('[chat] model fail', modelName, String(err.message || err).slice(0, 160));
     }
   }
 
-  let text;
+  throw lastErr || new Error('All Gemini models failed');
+}
+
+/**
+ * Manager AI chat — hub-first for common ops questions, Gemini with model fallbacks.
+ */
+export async function chatWithGemini(manager, userMessage) {
+  const { todayIst, nowIst } = nowInIst();
+  const yIst = yesterdayIst(todayIst);
+
+  // 1) Always answer common attendance/ops questions from Neon (no Gemini dependency)
+  const fast = await tryHubFastAnswer(manager, userMessage);
+  if (fast.handled) {
+    const toolTrace = (fast.toolsUsed || []).map((name) => ({ name, argKeys: [] }));
+    await persistTurn(manager.id, userMessage, fast.reply, toolTrace);
+    return { reply: fast.reply, toolsUsed: fast.toolsUsed || [], toolTrace };
+  }
+
+  // 2) Full Gemini + tools for everything else
   try {
-    text = response?.text?.() || null;
-  } catch {
-    text = null;
+    const result = await runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst });
+    await persistTurn(manager.id, userMessage, result.reply, result.toolTrace);
+    return result;
+  } catch (err) {
+    // 3) Last resort: try hub patterns again / friendly recovery
+    const fallback = await tryHubFastAnswer(manager, userMessage);
+    if (fallback.handled) {
+      const toolTrace = (fallback.toolsUsed || []).map((name) => ({ name, argKeys: [] }));
+      await persistTurn(manager.id, userMessage, fallback.reply, toolTrace);
+      return { reply: fallback.reply, toolsUsed: fallback.toolsUsed || [], toolTrace };
+    }
+
+    const text =
+      `Quick take: I couldn’t reach the language model just now (${String(err.message || err).slice(0, 100)}).\n\n` +
+      `I can still answer hub ops questions like **who was absent yesterday**, **present/late today**, or **daily briefing** — try one of those.`;
+    await persistTurn(manager.id, userMessage, text, []);
+    return { reply: text, toolsUsed: [], toolTrace: [] };
   }
-
-  if (!text || !String(text).trim()) {
-    text = friendlyFromTools(toolTrace, userMessage);
-  }
-
-  await persistTurn(manager.id, userMessage, text, toolTrace);
-
-  return { reply: text, toolsUsed: toolTrace.map((t) => t.name), toolTrace };
 }
 
 export async function getChatHistory(managerId, limit = 50) {
