@@ -11,7 +11,7 @@ const PRIORITIES = ['High', 'Medium', 'Low', 'Critical'];
 
 const STATUS_CONFIG = {
   'Done': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', icon: CheckCircle2, iconColor: '#10b981' },
-  'In Progress': { bg: 'bg-[#f3f0ff]', text: 'text-[#6c4dff]', border: 'border-[#e9e4ff]', icon: Clock, iconColor: '#6c4dff' },
+  'In Progress': { bg: 'bg-[#F0FDFA]', text: 'text-[#0F766E]', border: 'border-[#CCFBF1]', icon: Clock, iconColor: '#0F766E' },
   'Blocked': { bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200', icon: AlertCircle, iconColor: '#ef4444' },
   'Todo': { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', icon: Circle, iconColor: '#9ca3af' },
   'Backlog': { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200', icon: Circle, iconColor: '#94a3b8' },
@@ -67,12 +67,12 @@ function TaskRow({ task, onStatusChange }) {
   }
 
   return (
-    <tr className="border-t border-[#EDEDF5] hover:bg-[#fafafa] transition group">
+    <tr className="border-t border-[#E8EAED] hover:bg-[#fafafa] transition group">
       <td className="px-5 py-3.5">
         <div className="flex items-start gap-3">
           <Icon size={16} strokeWidth={2} style={{ color: cfg.iconColor, flexShrink: 0, marginTop: 2 }} />
           <div>
-            <div className={`text-sm font-medium ${task.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1f1f2e]'}`}>
+            <div className={`text-sm font-medium ${task.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1F2023]'}`}>
               {task.title}
             </div>
             {task.project_name && (
@@ -83,7 +83,7 @@ function TaskRow({ task, onStatusChange }) {
       </td>
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-[10px] font-bold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0F766E] to-[#115E59] text-[10px] font-bold text-white">
             {task.employee_name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '?'}
           </div>
           <div>
@@ -101,12 +101,12 @@ function TaskRow({ task, onStatusChange }) {
             <StatusBadge status={updating ? '…' : task.status} />
           </button>
           {statusOpen && (
-            <div className="absolute left-0 top-full z-20 mt-1 w-36 rounded-xl border border-[#EDEDF5] bg-white py-1 shadow-lg">
+            <div className="absolute left-0 top-full z-20 mt-1 w-36 rounded-xl border border-[#E8EAED] bg-white py-1 shadow-lg">
               {STATUSES.map((s) => (
                 <button
                   key={s}
                   onClick={() => changeStatus(s)}
-                  className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-[#f3f0ff] ${s === task.status ? 'font-semibold text-[#6c4dff]' : 'text-[#374151]'}`}
+                  className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-[#F0FDFA] ${s === task.status ? 'font-semibold text-[#0F766E]' : 'text-[#374151]'}`}
                 >
                   {s}
                 </button>
@@ -142,13 +142,13 @@ function KanbanColumn({ title, tasks, color, onStatusChange }) {
   }, { scope: colRef });
 
   return (
-    <div ref={colRef} className="flex flex-col rounded-2xl border border-[#EDEDF5] bg-[#f7f7fb] min-w-[220px] flex-1">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDF5]">
+    <div ref={colRef} className="flex flex-col rounded-2xl border border-[#E8EAED] bg-[#F7F8FA] min-w-[220px] flex-1">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E8EAED]">
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-          <span className="text-sm font-semibold text-[#1f1f2e]">{title}</span>
+          <span className="text-sm font-semibold text-[#1F2023]">{title}</span>
         </div>
-        <span className="rounded-full bg-white border border-[#EDEDF5] px-2 py-0.5 text-[11px] font-semibold text-[#9ca3af]">
+        <span className="rounded-full bg-white border border-[#E8EAED] px-2 py-0.5 text-[11px] font-semibold text-[#9ca3af]">
           {tasks.length}
         </span>
       </div>
@@ -156,14 +156,14 @@ function KanbanColumn({ title, tasks, color, onStatusChange }) {
         {tasks.map((task) => (
           <div
             key={task.id}
-            className="rounded-xl border border-[#EDEDF5] bg-white p-3 shadow-sm hover:shadow-md transition cursor-default"
+            className="rounded-xl border border-[#E8EAED] bg-white p-3 shadow-sm hover:shadow-md transition cursor-default"
           >
-            <div className={`text-sm font-medium leading-snug mb-2 ${task.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1f1f2e]'}`}>
+            <div className={`text-sm font-medium leading-snug mb-2 ${task.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1F2023]'}`}>
               {task.title}
             </div>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-[8px] font-bold text-white">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#0F766E] to-[#115E59] text-[8px] font-bold text-white">
                   {task.employee_name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '?'}
                 </div>
                 <span className="text-[10px] text-[#9ca3af] truncate max-w-[80px]">{task.employee_name || '—'}</span>
@@ -194,7 +194,7 @@ function KanbanColumn({ title, tasks, color, onStatusChange }) {
 
 const KANBAN_COLS = [
   { status: 'Todo', color: '#9ca3af' },
-  { status: 'In Progress', color: '#6c4dff' },
+  { status: 'In Progress', color: '#0F766E' },
   { status: 'Review', color: '#f59e0b' },
   { status: 'Blocked', color: '#ef4444' },
   { status: 'Done', color: '#10b981' },
@@ -250,19 +250,19 @@ export default function TasksPage() {
         {/* Header */}
         <div className="tasks-header flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Tasks</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Tasks</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">Track & update all employee tasks</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView('table')}
-              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${view === 'table' ? 'border-[#6c4dff]/30 bg-[#f3f0ff] text-[#6c4dff]' : 'border-[#EDEDF5] bg-white text-[#6b7280]'}`}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${view === 'table' ? 'border-[#0F766E]/30 bg-[#F0FDFA] text-[#0F766E]' : 'border-[#E8EAED] bg-white text-[#6b7280]'}`}
             >
               <List size={15} /> Table
             </button>
             <button
               onClick={() => setView('kanban')}
-              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${view === 'kanban' ? 'border-[#6c4dff]/30 bg-[#f3f0ff] text-[#6c4dff]' : 'border-[#EDEDF5] bg-white text-[#6b7280]'}`}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${view === 'kanban' ? 'border-[#0F766E]/30 bg-[#F0FDFA] text-[#0F766E]' : 'border-[#E8EAED] bg-white text-[#6b7280]'}`}
             >
               <LayoutGrid size={15} /> Kanban
             </button>
@@ -273,7 +273,7 @@ export default function TasksPage() {
         <div className="flex flex-wrap gap-2 mb-4">
           <button
             onClick={() => setStatusFilter('')}
-            className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${!statusFilter ? 'border-[#6c4dff] bg-[#6c4dff] text-white' : 'border-[#EDEDF5] bg-white text-[#6b7280] hover:border-[#6c4dff]/30'}`}
+            className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${!statusFilter ? 'border-[#0F766E] bg-[#0F766E] text-white' : 'border-[#E8EAED] bg-white text-[#6b7280] hover:border-[#0F766E]/30'}`}
           >
             All ({tasks.length})
           </button>
@@ -286,7 +286,7 @@ export default function TasksPage() {
                 className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${
                   statusFilter === s
                     ? `${cfg?.bg || 'bg-gray-50'} ${cfg?.text || 'text-gray-600'} ${cfg?.border || 'border-gray-200'}`
-                    : 'border-[#EDEDF5] bg-white text-[#6b7280] hover:border-[#6c4dff]/30'
+                    : 'border-[#E8EAED] bg-white text-[#6b7280] hover:border-[#0F766E]/30'
                 }`}
               >
                 {s} ({c})
@@ -302,7 +302,7 @@ export default function TasksPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search tasks, employees, projects…"
-            className="w-full rounded-2xl border border-[#EDEDF5] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#6c4dff] focus:ring-2 focus:ring-[#6c4dff]/10"
+            className="w-full rounded-2xl border border-[#E8EAED] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#0F766E] focus:ring-2 focus:ring-[#0F766E]/10"
           />
         </div>
 
@@ -312,10 +312,10 @@ export default function TasksPage() {
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <div className="h-8 w-8 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+            <div className="h-8 w-8 rounded-full border-2 border-[#0F766E] border-t-transparent animate-spin" />
           </div>
         ) : view === 'table' ? (
-          <div className="rounded-2xl border border-[#EDEDF5] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] overflow-hidden">
+          <div className="rounded-2xl border border-[#E8EAED] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-[#F8F8FC] text-[11px] uppercase tracking-wide text-[#9ca3af] sticky top-0">

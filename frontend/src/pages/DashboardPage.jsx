@@ -27,7 +27,7 @@ function KpiCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
   return (
     <div
       ref={cardRef}
-      className="rounded-2xl bg-white border border-[#EDEDF5] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
+      className="rounded-2xl bg-white border border-[#E8EAED] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]"
     >
       <div className="flex items-center justify-between mb-3">
         <div
@@ -38,7 +38,7 @@ function KpiCard({ icon: Icon, label, value, sub, color, delay = 0 }) {
         </div>
         <ArrowUpRight size={16} className="text-[#d1d5db]" />
       </div>
-      <div className="text-3xl font-bold text-[#1f1f2e] tabular-nums">{value ?? '—'}</div>
+      <div className="text-3xl font-bold text-[#1F2023] tabular-nums">{value ?? '—'}</div>
       <div className="mt-1 text-sm font-medium text-[#6b7280]">{label}</div>
       {sub && <div className="mt-0.5 text-xs text-[#9ca3af]">{sub}</div>}
     </div>
@@ -51,7 +51,7 @@ function MiniBar({ label, value, max, color }) {
     <div className="mb-3">
       <div className="flex justify-between text-xs mb-1">
         <span className="text-[#6b7280] font-medium">{label}</span>
-        <span className="font-semibold text-[#1f1f2e]">{value}</span>
+        <span className="font-semibold text-[#1F2023]">{value}</span>
       </div>
       <div className="h-2 rounded-full bg-[#f3f4f6] overflow-hidden">
         <div
@@ -72,9 +72,9 @@ function EodTrendChart({ data }) {
         const h = Math.max(8, Math.round((d.count / max) * 80));
         return (
           <div key={d.date} className="flex flex-col items-center gap-1 flex-1">
-            <span className="text-[10px] font-semibold text-[#6c4dff]">{d.count}</span>
+            <span className="text-[10px] font-semibold text-[#0F766E]">{d.count}</span>
             <div
-              className="w-full rounded-t-md bg-gradient-to-t from-[#6c4dff] to-[#a78bfa]"
+              className="w-full rounded-t-md bg-gradient-to-t from-[#0F766E] to-[#5EEAD4]"
               style={{ height: h }}
             />
             <span className="text-[9px] text-[#9ca3af] text-center leading-tight">
@@ -89,7 +89,7 @@ function EodTrendChart({ data }) {
 
 const STATUS_COLORS = {
   Done: '#10b981',
-  'In Progress': '#6c4dff',
+  'In Progress': '#0F766E',
   Todo: '#f59e0b',
   Backlog: '#9ca3af',
   Blocked: '#ef4444',
@@ -125,13 +125,13 @@ export default function DashboardPage() {
 
   return (
     <div ref={pageRef} className="relative flex h-full flex-col overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_300px_at_60%_-80px,rgba(108,77,255,0.1),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(800px_300px_at_60%_-80px,rgba(15,118,110,0.1),transparent_70%)]" />
 
       <div className="relative z-10 flex h-full flex-col overflow-y-auto p-6 md:p-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Dashboard</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Dashboard</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               Real-time overview · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
@@ -139,7 +139,7 @@ export default function DashboardPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-[#EDEDF5] bg-white px-4 py-2 text-sm font-medium text-[#6b7280] shadow-sm transition hover:border-[#6c4dff]/30 hover:text-[#6c4dff] disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl border border-[#E8EAED] bg-white px-4 py-2 text-sm font-medium text-[#6b7280] shadow-sm transition hover:border-[#0F766E]/30 hover:text-[#0F766E] disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -155,7 +155,7 @@ export default function DashboardPage() {
         {loading && !stats ? (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-3">
-              <div className="h-8 w-8 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+              <div className="h-8 w-8 rounded-full border-2 border-[#0F766E] border-t-transparent animate-spin" />
               <span className="text-sm text-[#9ca3af]">Loading stats…</span>
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function DashboardPage() {
           <>
             {/* KPI Cards */}
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-6">
-              <KpiCard icon={Users} label="Employees" value={c.total_employees} sub="Active members" color="#6c4dff" delay={0} />
+              <KpiCard icon={Users} label="Employees" value={c.total_employees} sub="Active members" color="#0F766E" delay={0} />
               <KpiCard icon={UserCheck} label="Present Today" value={c.present_today} sub={`${c.late_today || 0} late`} color="#10b981" delay={0.05} />
               <KpiCard icon={UserX} label="Absent Today" value={c.absent_today} sub="No punch / marked absent" color="#ef4444" delay={0.1} />
               <KpiCard icon={Clock} label="Late Today" value={c.late_today} sub="After shift start" color="#f59e0b" delay={0.15} />
@@ -176,13 +176,13 @@ export default function DashboardPage() {
             {/* Charts row */}
             <div className="grid gap-4 md:grid-cols-3 mb-6">
               {/* EOD Trend */}
-              <div className="rounded-2xl bg-white border border-[#EDEDF5] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2">
+              <div className="rounded-2xl bg-white border border-[#E8EAED] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2">
                 <div className="section-title flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-[#1f1f2e]">EOD Submission Trend</h3>
+                    <h3 className="font-semibold text-[#1F2023]">EOD Submission Trend</h3>
                     <p className="text-xs text-[#9ca3af] mt-0.5">Last 7 days</p>
                   </div>
-                  <span className="rounded-full bg-[#f3f0ff] px-2.5 py-1 text-xs font-medium text-[#6c4dff]">
+                  <span className="rounded-full bg-[#F0FDFA] px-2.5 py-1 text-xs font-medium text-[#0F766E]">
                     {stats?.eodTrend?.reduce((s, d) => s + d.count, 0) || 0} total
                   </span>
                 </div>
@@ -190,9 +190,9 @@ export default function DashboardPage() {
               </div>
 
               {/* Task Status */}
-              <div className="rounded-2xl bg-white border border-[#EDEDF5] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+              <div className="rounded-2xl bg-white border border-[#E8EAED] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
                 <div className="section-title mb-4">
-                  <h3 className="font-semibold text-[#1f1f2e]">Task Breakdown</h3>
+                  <h3 className="font-semibold text-[#1F2023]">Task Breakdown</h3>
                   <p className="text-xs text-[#9ca3af] mt-0.5">By status</p>
                 </div>
                 {stats?.taskStatus?.length ? (
@@ -202,7 +202,7 @@ export default function DashboardPage() {
                       label={s.status}
                       value={s.count}
                       max={totalTasks}
-                      color={STATUS_COLORS[s.status] || '#6c4dff'}
+                      color={STATUS_COLORS[s.status] || '#0F766E'}
                     />
                   ))
                 ) : (
@@ -212,9 +212,9 @@ export default function DashboardPage() {
             </div>
 
             {/* Top employees */}
-            <div className="rounded-2xl bg-white border border-[#EDEDF5] shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-              <div className="section-title flex items-center justify-between px-5 py-4 border-b border-[#EDEDF5]">
-                <h3 className="font-semibold text-[#1f1f2e]">Team Overview</h3>
+            <div className="rounded-2xl bg-white border border-[#E8EAED] shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
+              <div className="section-title flex items-center justify-between px-5 py-4 border-b border-[#E8EAED]">
+                <h3 className="font-semibold text-[#1F2023]">Team Overview</h3>
                 <span className="text-xs text-[#9ca3af]">Sorted by open tasks</span>
               </div>
               <div className="overflow-x-auto">
@@ -230,14 +230,14 @@ export default function DashboardPage() {
                   <tbody>
                     {stats?.topByTasks?.length ? (
                       stats.topByTasks.map((e, i) => (
-                        <tr key={i} className="border-t border-[#EDEDF5] hover:bg-[#fafafa]">
+                        <tr key={i} className="border-t border-[#E8EAED] hover:bg-[#fafafa]">
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-xs font-bold text-white">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#0F766E] to-[#115E59] text-xs font-bold text-white">
                                 {e.name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-semibold text-[#1f1f2e]">{e.name}</div>
+                                <div className="font-semibold text-[#1F2023]">{e.name}</div>
                                 <div className="text-xs text-[#9ca3af]">{e.email}</div>
                               </div>
                             </div>

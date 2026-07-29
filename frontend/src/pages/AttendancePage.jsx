@@ -108,7 +108,7 @@ export default function AttendancePage() {
       <div className="relative z-10 flex h-full flex-col overflow-y-auto p-6 md:p-8">
         <div className="att-header flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Attendance</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Attendance</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               Biometric punches · present / absent / late · IST
             </p>
@@ -116,7 +116,7 @@ export default function AttendancePage() {
           <button
             onClick={loadToday}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-[#EDEDF5] bg-white px-3.5 py-2 text-sm font-medium text-[#6b7280] hover:border-[#10b981]/40 hover:text-[#10b981] disabled:opacity-50"
+            className="flex items-center gap-2 rounded-xl border border-[#E8EAED] bg-white px-3.5 py-2 text-sm font-medium text-[#6b7280] hover:border-[#10b981]/40 hover:text-[#10b981] disabled:opacity-50"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -132,16 +132,16 @@ export default function AttendancePage() {
             { label: 'Present', value: c.present ?? '—', icon: UserCheck, color: '#10b981' },
             { label: 'Absent', value: c.absent ?? '—', icon: UserX, color: '#ef4444' },
             { label: 'Late', value: c.late ?? '—', icon: AlertTriangle, color: '#f59e0b' },
-            { label: 'On Leave', value: c.on_leave ?? '—', icon: Calendar, color: '#8b5cf6' },
+            { label: 'On Leave', value: c.on_leave ?? '—', icon: Calendar, color: '#0D9488' },
           ].map((k) => (
-            <div key={k.label} className="att-kpi rounded-2xl border border-[#EDEDF5] bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+            <div key={k.label} className="att-kpi rounded-2xl border border-[#E8EAED] bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: `${k.color}18` }}>
                   <k.icon size={16} style={{ color: k.color }} />
                 </div>
                 <span className="text-xs font-medium text-[#9ca3af]">{k.label}</span>
               </div>
-              <div className="text-2xl font-bold text-[#1f1f2e] tabular-nums">{k.value}</div>
+              <div className="text-2xl font-bold text-[#1F2023] tabular-nums">{k.value}</div>
               <div className="text-[11px] text-[#9ca3af] mt-0.5">{today?.date || 'Today'}</div>
             </div>
           ))}
@@ -154,19 +154,19 @@ export default function AttendancePage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search employee…"
-              className="w-full rounded-2xl border border-[#EDEDF5] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/10"
+              className="w-full rounded-2xl border border-[#E8EAED] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/10"
             />
           </div>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="rounded-xl border border-[#EDEDF5] bg-white px-3 py-2 text-sm outline-none focus:border-[#10b981]"
+            className="rounded-xl border border-[#E8EAED] bg-white px-3 py-2 text-sm outline-none focus:border-[#10b981]"
           />
         </div>
 
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-5">
-          <div className="overflow-auto rounded-2xl border border-[#EDEDF5] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-3">
+          <div className="overflow-auto rounded-2xl border border-[#E8EAED] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-3">
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="h-7 w-7 rounded-full border-2 border-[#10b981] border-t-transparent animate-spin" />
@@ -194,12 +194,12 @@ export default function AttendancePage() {
                     <tr
                       key={r.id || `${r.employee_id}-${r.work_date}`}
                       onClick={() => setSelected(r.employee_id)}
-                      className={`cursor-pointer border-t border-[#EDEDF5] hover:bg-[#f7f7fb] ${
+                      className={`cursor-pointer border-t border-[#E8EAED] hover:bg-[#F7F8FA] ${
                         selected === r.employee_id ? 'bg-[#ecfdf5]' : ''
                       }`}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-[#1f1f2e]">{r.employee_name}</div>
+                        <div className="font-semibold text-[#1F2023]">{r.employee_name}</div>
                         <div className="text-xs text-[#9ca3af]">{r.employee_email}</div>
                       </td>
                       <td className="px-4 py-3">
@@ -222,7 +222,7 @@ export default function AttendancePage() {
             )}
           </div>
 
-          <div className="overflow-auto rounded-2xl border border-[#EDEDF5] bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2">
+          <div className="overflow-auto rounded-2xl border border-[#E8EAED] bg-white p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2">
             {!selected ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-[#9ca3af]">
                 <Clock size={32} strokeWidth={1.25} />
@@ -231,12 +231,12 @@ export default function AttendancePage() {
             ) : (
               <div className="space-y-5">
                 <div>
-                  <h3 className="font-semibold text-[#1f1f2e]">Month days</h3>
+                  <h3 className="font-semibold text-[#1F2023]">Month days</h3>
                   <p className="text-xs text-[#9ca3af]">Through {formatDate(date)}</p>
                 </div>
                 <ul className="space-y-2 max-h-48 overflow-y-auto">
                   {(detail.days || []).slice(0, 31).map((d) => (
-                    <li key={d.id || d.work_date} className="flex items-center justify-between text-sm border-b border-[#EDEDF5] pb-2">
+                    <li key={d.id || d.work_date} className="flex items-center justify-between text-sm border-b border-[#E8EAED] pb-2">
                       <span className="text-[#6b7280]">{formatDate(d.work_date)}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLE[d.status] || ''}`}>
                         {d.status}
@@ -248,11 +248,11 @@ export default function AttendancePage() {
                 </ul>
 
                 <div>
-                  <h3 className="font-semibold text-[#1f1f2e] mb-2">Punches</h3>
+                  <h3 className="font-semibold text-[#1F2023] mb-2">Punches</h3>
                   <ul className="space-y-2 max-h-56 overflow-y-auto">
                     {(detail.punches || []).slice(0, 40).map((p) => (
                       <li key={p.id} className="flex items-center justify-between text-sm">
-                        <span className="text-[#1f1f2e] tabular-nums">
+                        <span className="text-[#1F2023] tabular-nums">
                           {new Date(p.punch_time).toLocaleString('en-IN', {
                             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                           })}
@@ -270,7 +270,7 @@ export default function AttendancePage() {
                 </div>
 
                 {summary?.employees?.length > 0 && (
-                  <div className="rounded-xl bg-[#f7f7fb] p-3 text-xs text-[#6b7280]">
+                  <div className="rounded-xl bg-[#F7F8FA] p-3 text-xs text-[#6b7280]">
                     Month summary loaded for {summary.employees.length} people ·{' '}
                     {Object.entries(summary.by_status || {}).map(([k, v]) => `${k}:${v}`).join(' · ') || '—'}
                   </div>

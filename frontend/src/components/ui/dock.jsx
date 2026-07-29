@@ -86,7 +86,7 @@ function Dock({
           mousePos.set(Infinity);
         }}
         className={cn(
-          'mx-auto flex w-fit gap-2.5 overflow-visible rounded-2xl bg-white/90 px-2.5 py-2.5 shadow-[0_8px_32px_rgba(15,118,110,0.1)] ring-1 ring-[#EDEDF5] backdrop-blur-md dark:bg-neutral-900',
+          'mx-auto flex w-fit gap-2.5 overflow-visible rounded-2xl bg-white/90 px-2.5 py-2.5 shadow-[0_8px_32px_rgba(15,118,110,0.1)] ring-1 ring-[#E8EAED] backdrop-blur-md dark:bg-neutral-900',
           isVertical ? 'flex-col items-center' : 'flex-row items-end',
           className
         )}

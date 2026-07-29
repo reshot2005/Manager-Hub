@@ -29,7 +29,7 @@ function duration(start, end) {
 const STATUS_CONFIG = {
   success: { bg: 'bg-green-50', text: 'text-green-700', icon: CheckCircle2, dot: '#10b981' },
   error: { bg: 'bg-red-50', text: 'text-red-600', icon: XCircle, dot: '#ef4444' },
-  running: { bg: 'bg-[#f3f0ff]', text: 'text-[#6c4dff]', icon: RefreshCw, dot: '#6c4dff' },
+  running: { bg: 'bg-[#F0FDFA]', text: 'text-[#0F766E]', icon: RefreshCw, dot: '#0F766E' },
 };
 
 function RunRow({ run }) {
@@ -38,11 +38,11 @@ function RunRow({ run }) {
   const stats = run.stats || {};
 
   return (
-    <div className="rounded-2xl border border-[#EDEDF5] bg-white p-4 shadow-[0_1px_6px_rgba(15,23,42,0.04)]">
+    <div className="rounded-2xl border border-[#E8EAED] bg-white p-4 shadow-[0_1px_6px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: cfg.dot }} />
-          <span className="font-semibold text-[#1f1f2e] capitalize">{run.source}</span>
+          <span className="font-semibold text-[#1F2023] capitalize">{run.source}</span>
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cfg.bg} ${cfg.text}`}>
             {run.status}
           </span>
@@ -57,7 +57,7 @@ function RunRow({ run }) {
       {Object.keys(stats).length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
           {Object.entries(stats).map(([k, v]) => (
-            <span key={k} className="rounded-full bg-[#f7f7fb] border border-[#EDEDF5] px-2 py-0.5 text-[10px] font-medium text-[#6b7280]">
+            <span key={k} className="rounded-full bg-[#F7F8FA] border border-[#E8EAED] px-2 py-0.5 text-[10px] font-medium text-[#6b7280]">
               {k}: {String(v)}
             </span>
           ))}
@@ -74,10 +74,10 @@ function RunRow({ run }) {
 }
 
 const RECORD_ICONS = {
-  employees: { icon: Users, color: '#6c4dff', label: 'Employees' },
+  employees: { icon: Users, color: '#0F766E', label: 'Employees' },
   tasks: { icon: CheckSquare, color: '#ef4444', label: 'Tasks' },
   eod_reports: { icon: FileText, color: '#f59e0b', label: 'EOD Reports' },
-  candidates: { icon: UserRoundSearch, color: '#8b5cf6', label: 'Candidates' },
+  candidates: { icon: UserRoundSearch, color: '#0D9488', label: 'Candidates' },
   applications: { icon: Briefcase, color: '#10b981', label: 'Applications' },
   interviews: { icon: Calendar, color: '#06b6d4', label: 'Interviews' },
   jobs: { icon: Briefcase, color: '#6366f1', label: 'Jobs' },
@@ -89,14 +89,14 @@ function CountCard({ name, count }) {
   const cfg = RECORD_ICONS[name] || { icon: Database, color: '#9ca3af', label: name };
   const Icon = cfg.icon;
   return (
-    <div className="rounded-2xl border border-[#EDEDF5] bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+    <div className="rounded-2xl border border-[#E8EAED] bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
       <div className="flex items-center gap-3 mb-1">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: `${cfg.color}15` }}>
           <Icon size={18} style={{ color: cfg.color }} strokeWidth={2} />
         </div>
         <span className="text-sm font-medium text-[#6b7280]">{cfg.label}</span>
       </div>
-      <div className="text-2xl font-bold text-[#1f1f2e] tabular-nums ml-0.5">{count?.toLocaleString() ?? '—'}</div>
+      <div className="text-2xl font-bold text-[#1F2023] tabular-nums ml-0.5">{count?.toLocaleString() ?? '—'}</div>
     </div>
   );
 }
@@ -162,7 +162,7 @@ export default function SyncPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Data Sync</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Data Sync</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               Sprintboard + ATS + Attendance → Manager Hub · auto-sync every 15 min
             </p>
@@ -170,7 +170,7 @@ export default function SyncPage() {
           <button
             onClick={loadStatus}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-[#EDEDF5] bg-white px-3.5 py-2 text-sm font-medium text-[#6b7280] hover:border-[#6c4dff]/30 hover:text-[#6c4dff] disabled:opacity-50 transition"
+            className="flex items-center gap-2 rounded-xl border border-[#E8EAED] bg-white px-3.5 py-2 text-sm font-medium text-[#6b7280] hover:border-[#0F766E]/30 hover:text-[#0F766E] disabled:opacity-50 transition"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -183,22 +183,22 @@ export default function SyncPage() {
 
         {/* Manual sync (admin only) */}
         {isAdmin && (
-          <div className="mb-6 rounded-2xl border border-[#EDEDF5] bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+          <div className="mb-6 rounded-2xl border border-[#E8EAED] bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
             <div className="flex items-center gap-2 mb-4">
-              <Zap size={18} className="text-[#6c4dff]" />
-              <h3 className="font-semibold text-[#1f1f2e]">Manual Sync</h3>
-              <span className="rounded-full bg-[#f3f0ff] px-2 py-0.5 text-[10px] font-medium text-[#6c4dff]">Admin</span>
+              <Zap size={18} className="text-[#0F766E]" />
+              <h3 className="font-semibold text-[#1F2023]">Manual Sync</h3>
+              <span className="rounded-full bg-[#F0FDFA] px-2 py-0.5 text-[10px] font-medium text-[#0F766E]">Admin</span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex rounded-xl border border-[#EDEDF5] overflow-hidden">
+              <div className="flex rounded-xl border border-[#E8EAED] overflow-hidden">
                 {['all', 'sprintboard', 'ats', 'attendance'].map((s) => (
                   <button
                     key={s}
                     onClick={() => setSyncSource(s)}
                     className={`px-3.5 py-2 text-sm font-medium transition capitalize ${
                       syncSource === s
-                        ? 'bg-[#6c4dff] text-white'
-                        : 'bg-white text-[#6b7280] hover:bg-[#f7f7fb]'
+                        ? 'bg-[#0F766E] text-white'
+                        : 'bg-white text-[#6b7280] hover:bg-[#F7F8FA]'
                     }`}
                   >
                     {s === 'all' ? 'All Sources' : s}
@@ -208,7 +208,7 @@ export default function SyncPage() {
               <button
                 onClick={runSync}
                 disabled={syncing}
-                className="flex items-center gap-2 rounded-xl bg-[#6c4dff] px-5 py-2 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(108,77,255,0.3)] transition hover:bg-[#5b3df5] disabled:opacity-60"
+                className="flex items-center gap-2 rounded-xl bg-[#0F766E] px-5 py-2 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(15,118,110,0.3)] transition hover:bg-[#115E59] disabled:opacity-60"
               >
                 <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
                 {syncing ? 'Syncing…' : 'Run Sync Now'}
@@ -236,7 +236,7 @@ export default function SyncPage() {
         )}
 
         {!isAdmin && (
-          <div className="mb-6 rounded-2xl border border-[#EDEDF5] bg-[#fafafa] p-4 flex items-center gap-3 text-sm text-[#9ca3af]">
+          <div className="mb-6 rounded-2xl border border-[#E8EAED] bg-[#fafafa] p-4 flex items-center gap-3 text-sm text-[#9ca3af]">
             <Info size={16} className="shrink-0" />
             Manual sync requires Admin role. Data auto-syncs every 15 minutes.
           </div>
@@ -244,7 +244,7 @@ export default function SyncPage() {
 
         {/* Record counts */}
         <div className="mb-6">
-          <h3 className="text-sm font-semibold text-[#1f1f2e] mb-3">Database Records</h3>
+          <h3 className="text-sm font-semibold text-[#1F2023] mb-3">Database Records</h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {Object.entries(counts).map(([k, v]) => (
               <div key={k} className="sync-count-card">
@@ -256,13 +256,13 @@ export default function SyncPage() {
 
         {/* Sync history */}
         <div>
-          <h3 className="text-sm font-semibold text-[#1f1f2e] mb-3">Recent Sync Runs</h3>
+          <h3 className="text-sm font-semibold text-[#1F2023] mb-3">Recent Sync Runs</h3>
           {loading ? (
             <div className="flex items-center justify-center py-10">
-              <div className="h-7 w-7 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+              <div className="h-7 w-7 rounded-full border-2 border-[#0F766E] border-t-transparent animate-spin" />
             </div>
           ) : !data?.runs?.length ? (
-            <div className="rounded-2xl border border-dashed border-[#EDEDF5] py-10 text-center text-sm text-[#9ca3af]">
+            <div className="rounded-2xl border border-dashed border-[#E8EAED] py-10 text-center text-sm text-[#9ca3af]">
               No sync runs yet. {isAdmin ? 'Click "Run Sync Now" to start.' : 'Waiting for first sync.'}
             </div>
           ) : (

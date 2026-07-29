@@ -291,7 +291,7 @@ export default function ChatPage() {
               />
             </div>
 
-            <h1 className="text-center text-[34px] font-semibold tracking-tight text-[#1f1f2e] md:text-[40px]">
+            <h1 className="text-center text-[34px] font-semibold tracking-tight text-[#1F2023] md:text-[40px]">
               {greetingForNow()}, {firstName(user?.name)}
             </h1>
             <p className="mt-2 max-w-[640px] text-center text-[15px] leading-relaxed text-[#6b7280]">
@@ -343,7 +343,7 @@ export default function ChatPage() {
                 <div key={m.id} className="group">
                   {m.role === 'user' ? (
                     <div className="flex justify-end">
-                      <div className="max-w-[85%] rounded-[22px] rounded-br-md bg-[#e8f0fe] px-4 py-3 text-[15px] leading-relaxed text-[#1a73e8] shadow-sm">
+                      <div className="max-w-[85%] rounded-[22px] rounded-br-md bg-[#E6F4F1] px-4 py-3 text-[15px] leading-relaxed text-[#0F766E] shadow-sm">
                         <div className="whitespace-pre-wrap text-[#202124]">{m.content}</div>
                       </div>
                     </div>

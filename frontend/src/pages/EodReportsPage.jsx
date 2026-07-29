@@ -51,7 +51,7 @@ function TaskItem({ task, index, reportId, taskType, onComplete }) {
 
   return (
     <div className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 transition ${
-      done ? 'border-green-100 bg-green-50/50' : 'border-[#EDEDF5] bg-white'
+      done ? 'border-green-100 bg-green-50/50' : 'border-[#E8EAED] bg-white'
     }`}>
       <button
         onClick={done ? undefined : handleComplete}
@@ -60,16 +60,16 @@ function TaskItem({ task, index, reportId, taskType, onComplete }) {
         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
           done
             ? 'border-green-500 bg-green-500 text-white'
-            : 'border-[#d1d5db] hover:border-[#6c4dff] hover:bg-[#f3f0ff]'
+            : 'border-[#d1d5db] hover:border-[#0F766E] hover:bg-[#F0FDFA]'
         } ${completing ? 'opacity-50' : ''}`}
       >
         {done && <CheckCircle2 size={12} />}
       </button>
-      <span className={`text-sm leading-relaxed ${done ? 'line-through text-[#9ca3af]' : 'text-[#1f1f2e]'}`}>
+      <span className={`text-sm leading-relaxed ${done ? 'line-through text-[#9ca3af]' : 'text-[#1F2023]'}`}>
         {name}
       </span>
       {task?.completed_by_manager && (
-        <span className="ml-auto shrink-0 text-[10px] font-medium text-[#6c4dff] bg-[#f3f0ff] rounded-full px-2 py-0.5">
+        <span className="ml-auto shrink-0 text-[10px] font-medium text-[#0F766E] bg-[#F0FDFA] rounded-full px-2 py-0.5">
           Approved
         </span>
       )}
@@ -87,18 +87,18 @@ function ReportCard({ report, onTaskComplete }) {
   const tomorrowPlan = Array.isArray(report.tomorrow_plan) ? report.tomorrow_plan : [];
 
   return (
-    <div ref={cardRef} className="rounded-2xl border border-[#EDEDF5] bg-white shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
+    <div ref={cardRef} className="rounded-2xl border border-[#E8EAED] bg-white shadow-[0_2px_8px_rgba(15,23,42,0.05)] overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-4 px-5 py-4 hover:bg-[#fafafa] transition text-left"
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-xs font-bold text-white">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0F766E] to-[#115E59] text-xs font-bold text-white">
           {report.employee_name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-[#1f1f2e]">{report.employee_name}</span>
+            <span className="font-semibold text-[#1F2023]">{report.employee_name}</span>
             <StatusChip status={report.status} />
             {blockers.length > 0 && (
               <span className="flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600">
@@ -123,7 +123,7 @@ function ReportCard({ report, onTaskComplete }) {
 
       {/* Expanded detail */}
       {open && (
-        <div className="border-t border-[#EDEDF5] px-5 py-5 space-y-5">
+        <div className="border-t border-[#E8EAED] px-5 py-5 space-y-5">
           {report.achievements && (
             <div>
               <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af] mb-2">Achievements</h4>
@@ -194,7 +194,7 @@ function ReportCard({ report, onTaskComplete }) {
               <div className="space-y-1.5">
                 {tomorrowPlan.map((p, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-[#374151]">
-                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#6c4dff] shrink-0" />
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#0F766E] shrink-0" />
                     {p?.task || p?.title || p?.description || (typeof p === 'string' ? p : `Task ${i + 1}`)}
                   </div>
                 ))}
@@ -207,9 +207,9 @@ function ReportCard({ report, onTaskComplete }) {
               <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af] mb-2">Self Evaluation</h4>
               <div className="grid grid-cols-2 gap-2">
                 {Object.entries(report.self_evaluation).map(([k, v]) => (
-                  <div key={k} className="rounded-lg bg-[#f7f7fb] px-3 py-2">
+                  <div key={k} className="rounded-lg bg-[#F7F8FA] px-3 py-2">
                     <div className="text-[10px] text-[#9ca3af] capitalize">{k.replace(/_/g, ' ')}</div>
-                    <div className="text-sm font-semibold text-[#1f1f2e]">{String(v)}</div>
+                    <div className="text-sm font-semibold text-[#1F2023]">{String(v)}</div>
                   </div>
                 ))}
               </div>
@@ -273,7 +273,7 @@ export default function EodReportsPage() {
         {/* Header */}
         <div className="eod-header flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">EOD Reports</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">EOD Reports</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               Read daily reports · mark tasks complete · track blockers
             </p>
@@ -286,14 +286,14 @@ export default function EodReportsPage() {
               onClick={() => setFilterOpen((v) => !v)}
               className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition ${
                 filterOpen || dateFrom || dateTo
-                  ? 'border-[#6c4dff]/30 bg-[#f3f0ff] text-[#6c4dff]'
-                  : 'border-[#EDEDF5] bg-white text-[#6b7280] hover:border-[#6c4dff]/30'
+                  ? 'border-[#0F766E]/30 bg-[#F0FDFA] text-[#0F766E]'
+                  : 'border-[#E8EAED] bg-white text-[#6b7280] hover:border-[#0F766E]/30'
               }`}
             >
               <Filter size={14} />
               Filters
               {(dateFrom || dateTo) && (
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#6c4dff] text-[9px] font-bold text-white">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#0F766E] text-[9px] font-bold text-white">
                   {(dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}
                 </span>
               )}
@@ -303,7 +303,7 @@ export default function EodReportsPage() {
 
         {/* Filters */}
         {filterOpen && (
-          <div className="mb-5 rounded-2xl border border-[#EDEDF5] bg-white p-4 shadow-sm">
+          <div className="mb-5 rounded-2xl border border-[#E8EAED] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-end gap-4">
               <div>
                 <label className="block text-xs font-medium text-[#9ca3af] mb-1">From</label>
@@ -311,7 +311,7 @@ export default function EodReportsPage() {
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
-                  className="rounded-xl border border-[#EDEDF5] bg-[#f7f7fb] px-3 py-2 text-sm outline-none focus:border-[#6c4dff]"
+                  className="rounded-xl border border-[#E8EAED] bg-[#F7F8FA] px-3 py-2 text-sm outline-none focus:border-[#0F766E]"
                 />
               </div>
               <div>
@@ -320,7 +320,7 @@ export default function EodReportsPage() {
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
-                  className="rounded-xl border border-[#EDEDF5] bg-[#f7f7fb] px-3 py-2 text-sm outline-none focus:border-[#6c4dff]"
+                  className="rounded-xl border border-[#E8EAED] bg-[#F7F8FA] px-3 py-2 text-sm outline-none focus:border-[#0F766E]"
                 />
               </div>
               {(dateFrom || dateTo) && (
@@ -342,7 +342,7 @@ export default function EodReportsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by employee name or email…"
-            className="w-full rounded-2xl border border-[#EDEDF5] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#6c4dff] focus:ring-2 focus:ring-[#6c4dff]/10"
+            className="w-full rounded-2xl border border-[#E8EAED] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#0F766E] focus:ring-2 focus:ring-[#0F766E]/10"
           />
         </div>
 
@@ -352,7 +352,7 @@ export default function EodReportsPage() {
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <div className="h-8 w-8 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+            <div className="h-8 w-8 rounded-full border-2 border-[#0F766E] border-t-transparent animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[#9ca3af]">
@@ -363,7 +363,7 @@ export default function EodReportsPage() {
           <div className="space-y-6">
             {todayReports.length > 0 && (
               <div>
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#1f1f2e]">
+                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#1F2023]">
                   <span className="h-2 w-2 rounded-full bg-green-500" />
                   Today's Reports ({todayReports.length})
                 </h2>

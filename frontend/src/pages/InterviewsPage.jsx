@@ -40,7 +40,7 @@ const RESULT_CONFIG = {
   failed: { bg: 'bg-red-50', text: 'text-red-600', icon: XCircle },
   rejected: { bg: 'bg-red-50', text: 'text-red-600', icon: XCircle },
   pending: { bg: 'bg-amber-50', text: 'text-amber-600', icon: AlertCircle },
-  scheduled: { bg: 'bg-[#f3f0ff]', text: 'text-[#6c4dff]', icon: Clock },
+  scheduled: { bg: 'bg-[#F0FDFA]', text: 'text-[#0F766E]', icon: Clock },
 };
 
 function ResultBadge({ result }) {
@@ -60,33 +60,33 @@ function InterviewCard({ interview, highlight }) {
 
   return (
     <div className={`rounded-2xl border bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition hover:shadow-md ${
-      highlight ? 'border-[#6c4dff]/30 ring-1 ring-[#6c4dff]/20' : 'border-[#EDEDF5]'
+      highlight ? 'border-[#0F766E]/30 ring-1 ring-[#0F766E]/20' : 'border-[#E8EAED]'
     }`}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-[#1f1f2e] truncate">{interview.candidate_name}</div>
+          <div className="font-semibold text-[#1F2023] truncate">{interview.candidate_name}</div>
           <div className="text-sm text-[#6b7280] truncate mt-0.5">{interview.job_title || '—'}</div>
         </div>
         <ResultBadge result={interview.result} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="flex items-center gap-2 rounded-xl bg-[#f7f7fb] px-3 py-2">
-          <Calendar size={14} className="text-[#6c4dff] shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl bg-[#F7F8FA] px-3 py-2">
+          <Calendar size={14} className="text-[#0F766E] shrink-0" />
           <div>
             <div className="text-[10px] text-[#9ca3af] font-medium">Date</div>
-            <div className="text-xs font-semibold text-[#1f1f2e]">
+            <div className="text-xs font-semibold text-[#1F2023]">
               {highlight ? (
-                <span className="text-[#6c4dff]">{isToday(interview.scheduled_start) ? 'Today' : 'Tomorrow'}</span>
+                <span className="text-[#0F766E]">{isToday(interview.scheduled_start) ? 'Today' : 'Tomorrow'}</span>
               ) : date}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-xl bg-[#f7f7fb] px-3 py-2">
+        <div className="flex items-center gap-2 rounded-xl bg-[#F7F8FA] px-3 py-2">
           <Clock size={14} className="text-[#f59e0b] shrink-0" />
           <div>
             <div className="text-[10px] text-[#9ca3af] font-medium">Time</div>
-            <div className="text-xs font-semibold text-[#1f1f2e]">
+            <div className="text-xs font-semibold text-[#1F2023]">
               {time}{endTime ? ` – ${endTime}` : ''}
             </div>
           </div>
@@ -95,7 +95,7 @@ function InterviewCard({ interview, highlight }) {
 
       <div className="flex flex-wrap items-center gap-2">
         {interview.round_label && (
-          <span className="rounded-full bg-[#f3f0ff] border border-[#e9e4ff] px-2.5 py-0.5 text-[11px] font-medium text-[#6c4dff]">
+          <span className="rounded-full bg-[#F0FDFA] border border-[#CCFBF1] px-2.5 py-0.5 text-[11px] font-medium text-[#0F766E]">
             {interview.round_label}
           </span>
         )}
@@ -121,7 +121,7 @@ function InterviewCard({ interview, highlight }) {
             href={interview.meeting_link}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-auto flex items-center gap-1 rounded-lg bg-[#6c4dff] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#5b3df5] transition"
+            className="ml-auto flex items-center gap-1 rounded-lg bg-[#0F766E] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#115E59] transition"
           >
             Join <ExternalLink size={10} />
           </a>
@@ -138,13 +138,13 @@ function InterviewCard({ interview, highlight }) {
 function Section({ title, interviews, highlight, emptyMsg }) {
   return (
     <div className="mb-8">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#1f1f2e]">
-        {highlight && <span className="h-2 w-2 rounded-full bg-[#6c4dff] animate-pulse" />}
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#1F2023]">
+        {highlight && <span className="h-2 w-2 rounded-full bg-[#0F766E] animate-pulse" />}
         {!highlight && <span className="h-2 w-2 rounded-full bg-[#d1d5db]" />}
         {title} ({interviews.length})
       </h2>
       {interviews.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#EDEDF5] py-8 text-center text-sm text-[#9ca3af]">
+        <div className="rounded-2xl border border-dashed border-[#E8EAED] py-8 text-center text-sm text-[#9ca3af]">
           {emptyMsg}
         </div>
       ) : (
@@ -203,7 +203,7 @@ export default function InterviewsPage() {
         {/* Header */}
         <div className="interviews-header flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Interviews</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Interviews</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               Schedule · {upcoming.length} upcoming · {past.length} past
             </p>
@@ -211,13 +211,13 @@ export default function InterviewsPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowUpcoming(true)}
-              className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${showUpcoming ? 'border-[#06b6d4]/30 bg-[#ecfeff] text-[#0891b2]' : 'border-[#EDEDF5] bg-white text-[#6b7280]'}`}
+              className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${showUpcoming ? 'border-[#06b6d4]/30 bg-[#ecfeff] text-[#0891b2]' : 'border-[#E8EAED] bg-white text-[#6b7280]'}`}
             >
               Upcoming ({upcoming.length})
             </button>
             <button
               onClick={() => setShowUpcoming(false)}
-              className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${!showUpcoming ? 'border-[#EDEDF5] bg-[#f7f7fb] text-[#374151]' : 'border-[#EDEDF5] bg-white text-[#6b7280]'}`}
+              className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${!showUpcoming ? 'border-[#E8EAED] bg-[#F7F8FA] text-[#374151]' : 'border-[#E8EAED] bg-white text-[#6b7280]'}`}
             >
               Past ({past.length})
             </button>
@@ -231,7 +231,7 @@ export default function InterviewsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search candidate, job title…"
-            className="w-full rounded-2xl border border-[#EDEDF5] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#06b6d4] focus:ring-2 focus:ring-[#06b6d4]/10"
+            className="w-full rounded-2xl border border-[#E8EAED] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#06b6d4] focus:ring-2 focus:ring-[#06b6d4]/10"
           />
         </div>
 

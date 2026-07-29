@@ -24,14 +24,14 @@ gsap.registerPlugin(useGSAP);
 
 const NAV_ITEMS = [
   { to: '/', icon: Home, label: 'AI Chat', end: true, color: '#0F766E' },
-  { to: '/dashboard', icon: BarChart2, label: 'Dashboard', color: '#0EA5E9' },
-  { to: '/employees', icon: Users, label: 'Employees', color: '#059669' },
-  { to: '/attendance', icon: Fingerprint, label: 'Attendance', color: '#0D9488' },
-  { to: '/eod', icon: FileText, label: 'EOD Reports', color: '#D97706' },
-  { to: '/tasks', icon: CheckSquare, label: 'Tasks', color: '#DC2626' },
-  { to: '/candidates', icon: UserRoundSearch, label: 'Candidates', color: '#CA8A04' },
-  { to: '/interviews', icon: Calendar, label: 'Interviews', color: '#0891B2' },
-  { to: '/sync', icon: Activity, label: 'Data Sync', color: '#475569' },
+  { to: '/dashboard', icon: BarChart2, label: 'Dashboard', color: '#0D9488' },
+  { to: '/employees', icon: Users, label: 'Employees', color: '#14B8A6' },
+  { to: '/attendance', icon: Fingerprint, label: 'Attendance', color: '#0F766E' },
+  { to: '/eod', icon: FileText, label: 'EOD Reports', color: '#0D9488' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks', color: '#115E59' },
+  { to: '/candidates', icon: UserRoundSearch, label: 'Candidates', color: '#14B8A6' },
+  { to: '/interviews', icon: Calendar, label: 'Interviews', color: '#0F766E' },
+  { to: '/sync', icon: Activity, label: 'Data Sync', color: '#334155' },
 ];
 
 function MagneticAvatar({ initials, name, onClick }) {
@@ -89,7 +89,7 @@ export default function AppLayout() {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#f5f7f6]">
+      <div className="grid min-h-screen place-items-center bg-[#F7F8FA]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0F766E] border-t-transparent" />
           <span className="text-sm text-[#9ca3af]">Loading workspace…</span>
@@ -111,7 +111,7 @@ export default function AppLayout() {
     end ? location.pathname === to : location.pathname.startsWith(to);
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#f5f7f6]">
+    <div className="relative h-screen overflow-hidden bg-[#F7F8FA]">
       {/* Transparent floating dock overlay */}
       <aside className="pointer-events-none absolute inset-y-0 left-0 z-40 flex w-[76px] flex-col items-center justify-between overflow-visible bg-transparent py-5">
         <button
@@ -209,7 +209,7 @@ function SettingsModal({ user, onClose, onLogout }) {
         className="w-full max-w-sm rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-2xl"
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#1f1f2e]">Settings</h2>
+          <h2 className="text-lg font-bold text-[#1F2023]">Settings</h2>
           <button
             type="button"
             onClick={onClose}
@@ -232,7 +232,7 @@ function SettingsModal({ user, onClose, onLogout }) {
             </span>
           </div>
           <div>
-            <div className="font-semibold text-[#1f1f2e]">{user.name}</div>
+            <div className="font-semibold text-[#1F2023]">{user.name}</div>
             <div className="text-sm text-[#9ca3af]">{user.email}</div>
             <div className="mt-0.5 inline-block rounded-full bg-[#0F766E]/10 px-2 py-0.5 text-[11px] font-medium text-[#0F766E]">
               {user.role || 'MANAGER'}
@@ -243,7 +243,7 @@ function SettingsModal({ user, onClose, onLogout }) {
         <div className="space-y-2">
           <div className="rounded-xl border border-[#E5E7EB] p-3">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-[#9ca3af]">Version</div>
-            <div className="text-sm font-medium text-[#1f1f2e]">Manager Hub v1.0</div>
+            <div className="text-sm font-medium text-[#1F2023]">Manager Hub v1.0</div>
           </div>
         </div>
 

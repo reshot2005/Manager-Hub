@@ -26,7 +26,7 @@ export default function LoginPage() {
 
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-canvas px-6">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(700px_360px_at_50%_-40px,rgba(167,139,250,0.28),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(700px_360px_at_50%_-40px,rgba(15,118,110,0.16),transparent_70%)]" />
       <div className="relative w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="relative mb-5">
@@ -66,7 +66,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-xl bg-brand py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(108,77,255,0.35)] transition hover:bg-brand-deep disabled:opacity-60"
+            className="w-full rounded-xl bg-brand py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(15,118,110,0.35)] transition hover:bg-brand-deep disabled:opacity-60"
           >
             {busy ? 'Signing in…' : 'Sign in'}
           </button>

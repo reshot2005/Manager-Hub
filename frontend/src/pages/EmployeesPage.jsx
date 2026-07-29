@@ -16,7 +16,7 @@ function formatDate(d) {
 
 const TASK_STATUS_COLOR = {
   Done: '#10b981',
-  'In Progress': '#6c4dff',
+  'In Progress': '#0F766E',
   Blocked: '#ef4444',
   Todo: '#9ca3af',
   Review: '#f59e0b',
@@ -49,7 +49,7 @@ function EodSection({ eods }) {
         return (
           <div
             key={i}
-            className="rounded-xl border border-[#EDEDF5] bg-[#f7f7fb] overflow-hidden"
+            className="rounded-xl border border-[#E8EAED] bg-[#F7F8FA] overflow-hidden"
           >
             <button
               onClick={() => setExpanded(isOpen ? null : i)}
@@ -60,7 +60,7 @@ function EodSection({ eods }) {
                   e.status?.toLowerCase() === 'submitted' ? 'bg-green-500' :
                   e.status?.toLowerCase() === 'late' ? 'bg-amber-400' : 'bg-[#d1d5db]'
                 }`} />
-                <span className="text-sm font-semibold text-[#1f1f2e]">{formatDate(e.report_date)}</span>
+                <span className="text-sm font-semibold text-[#1F2023]">{formatDate(e.report_date)}</span>
                 {blockers.length > 0 && (
                   <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-500">
                     <AlertCircle size={10} /> {blockers.length} blocker
@@ -73,7 +73,7 @@ function EodSection({ eods }) {
               </div>
             </button>
             {isOpen && (
-              <div className="border-t border-[#EDEDF5] px-3.5 py-3 space-y-3 bg-white">
+              <div className="border-t border-[#E8EAED] px-3.5 py-3 space-y-3 bg-white">
                 {e.achievements && (
                   <p className="text-xs text-[#374151] leading-relaxed">{e.achievements}</p>
                 )}
@@ -171,7 +171,7 @@ export default function EmployeesPage() {
         {/* Header */}
         <div className="emp-header flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-[26px] font-bold tracking-tight text-[#1f1f2e]">Employees</h1>
+            <h1 className="text-[26px] font-bold tracking-tight text-[#1F2023]">Employees</h1>
             <p className="mt-0.5 text-sm text-[#9ca3af]">
               {rows.length} active ·{' '}
               {eodMissing > 0 ? (
@@ -190,7 +190,7 @@ export default function EmployeesPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search name or email…"
-            className="w-full rounded-2xl border border-[#EDEDF5] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/10"
+            className="w-full rounded-2xl border border-[#E8EAED] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/10"
           />
         </div>
 
@@ -200,7 +200,7 @@ export default function EmployeesPage() {
 
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-5">
           {/* List */}
-          <div className="emp-table-wrap overflow-auto rounded-2xl border border-[#EDEDF5] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-3">
+          <div className="emp-table-wrap overflow-auto rounded-2xl border border-[#E8EAED] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-3">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-[#F8F8FC] text-left text-[11px] uppercase tracking-wide text-[#9ca3af]">
                 <tr>
@@ -229,17 +229,17 @@ export default function EmployeesPage() {
                     <tr
                       key={r.id}
                       onClick={() => { setSelected(r.id); setActiveTab('tasks'); }}
-                      className={`cursor-pointer border-t border-[#EDEDF5] transition hover:bg-[#f7f7fb] ${
-                        selected === r.id ? 'bg-[#f3f0ff]' : ''
+                      className={`cursor-pointer border-t border-[#E8EAED] transition hover:bg-[#F7F8FA] ${
+                        selected === r.id ? 'bg-[#F0FDFA]' : ''
                       }`}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-xs font-bold text-white shrink-0">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#0F766E] to-[#115E59] text-xs font-bold text-white shrink-0">
                             {r.name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-semibold text-[#1f1f2e]">{r.name}</div>
+                            <div className="font-semibold text-[#1F2023]">{r.name}</div>
                             <div className="text-xs text-[#9ca3af]">{r.email}</div>
                           </div>
                         </div>
@@ -277,11 +277,11 @@ export default function EmployeesPage() {
           {/* Detail panel */}
           <div
             ref={detailRef}
-            className="overflow-auto rounded-2xl border border-[#EDEDF5] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2"
+            className="overflow-auto rounded-2xl border border-[#E8EAED] bg-white shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:col-span-2"
           >
             {detailLoading && (
               <div className="flex h-full items-center justify-center">
-                <div className="h-6 w-6 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+                <div className="h-6 w-6 rounded-full border-2 border-[#0F766E] border-t-transparent animate-spin" />
               </div>
             )}
             {!detail && !detailLoading && (
@@ -293,13 +293,13 @@ export default function EmployeesPage() {
             {detail && !detailLoading && (
               <div className="flex flex-col h-full">
                 {/* Profile header */}
-                <div className="p-5 border-b border-[#EDEDF5] bg-gradient-to-br from-[#f3f0ff] to-white">
+                <div className="p-5 border-b border-[#E8EAED] bg-gradient-to-br from-[#F0FDFA] to-white">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-base font-bold text-white shadow-lg">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0F766E] to-[#115E59] text-base font-bold text-white shadow-lg">
                       {detail.employee.name?.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h2 className="text-lg font-bold text-[#1f1f2e]">{detail.employee.name}</h2>
+                      <h2 className="text-lg font-bold text-[#1F2023]">{detail.employee.name}</h2>
                       <div className="flex items-center gap-1.5 mt-0.5 text-xs text-[#9ca3af]">
                         <Shield size={11} />
                         {detail.employee.role || 'Employee'}
@@ -312,7 +312,7 @@ export default function EmployeesPage() {
                     </div>
                     <button
                       onClick={() => { setSelected(null); setDetail(null); }}
-                      className="rounded-lg p-1.5 hover:bg-[#f3f0ff] text-[#9ca3af]"
+                      className="rounded-lg p-1.5 hover:bg-[#F0FDFA] text-[#9ca3af]"
                     >
                       <X size={16} />
                     </button>
@@ -320,15 +320,15 @@ export default function EmployeesPage() {
 
                   {/* Quick stats */}
                   <div className="grid grid-cols-3 gap-2 mt-4">
-                    <div className="rounded-xl bg-white border border-[#EDEDF5] px-3 py-2 text-center">
-                      <div className="text-lg font-bold text-[#6c4dff]">{detail.tasks?.length || 0}</div>
+                    <div className="rounded-xl bg-white border border-[#E8EAED] px-3 py-2 text-center">
+                      <div className="text-lg font-bold text-[#0F766E]">{detail.tasks?.length || 0}</div>
                       <div className="text-[10px] text-[#9ca3af]">Tasks</div>
                     </div>
-                    <div className="rounded-xl bg-white border border-[#EDEDF5] px-3 py-2 text-center">
+                    <div className="rounded-xl bg-white border border-[#E8EAED] px-3 py-2 text-center">
                       <div className="text-lg font-bold text-[#f59e0b]">{detail.eods?.length || 0}</div>
                       <div className="text-[10px] text-[#9ca3af]">EOD Reports</div>
                     </div>
-                    <div className="rounded-xl bg-white border border-[#EDEDF5] px-3 py-2 text-center">
+                    <div className="rounded-xl bg-white border border-[#E8EAED] px-3 py-2 text-center">
                       <div className="text-lg font-bold text-[#ef4444]">
                         {detail.tasks?.filter((t) => TASK_STATUS_COLOR[t.status] === '#ef4444').length || 0}
                       </div>
@@ -338,7 +338,7 @@ export default function EmployeesPage() {
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-[#EDEDF5]">
+                <div className="flex border-b border-[#E8EAED]">
                   {[
                     { id: 'tasks', label: 'Tasks', count: detail.tasks?.length },
                     { id: 'eod', label: 'EOD Reports', count: detail.eods?.length },
@@ -348,14 +348,14 @@ export default function EmployeesPage() {
                       onClick={() => setActiveTab(tab.id)}
                       className={`flex-1 px-4 py-3 text-sm font-medium transition border-b-2 ${
                         activeTab === tab.id
-                          ? 'border-[#6c4dff] text-[#6c4dff]'
+                          ? 'border-[#0F766E] text-[#0F766E]'
                           : 'border-transparent text-[#9ca3af] hover:text-[#6b7280]'
                       }`}
                     >
                       {tab.label}
                       {tab.count != null && (
                         <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                          activeTab === tab.id ? 'bg-[#f3f0ff] text-[#6c4dff]' : 'bg-[#f3f4f6] text-[#9ca3af]'
+                          activeTab === tab.id ? 'bg-[#F0FDFA] text-[#0F766E]' : 'bg-[#f3f4f6] text-[#9ca3af]'
                         }`}>
                           {tab.count}
                         </span>
@@ -374,10 +374,10 @@ export default function EmployeesPage() {
                       {(detail.tasks || []).slice(0, 20).map((t, i) => (
                         <div
                           key={i}
-                          className="flex items-start justify-between gap-3 rounded-xl border border-[#EDEDF5] bg-[#f7f7fb] px-3.5 py-3"
+                          className="flex items-start justify-between gap-3 rounded-xl border border-[#E8EAED] bg-[#F7F8FA] px-3.5 py-3"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className={`text-sm font-medium leading-snug ${t.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1f1f2e]'}`}>
+                            <div className={`text-sm font-medium leading-snug ${t.status === 'Done' ? 'line-through text-[#9ca3af]' : 'text-[#1F2023]'}`}>
                               {t.title}
                             </div>
                             {t.project_name && (

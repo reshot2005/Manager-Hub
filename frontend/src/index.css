@@ -19,8 +19,8 @@ body,
 body {
   margin: 0;
   font-family: Inter, system-ui, sans-serif;
-  background: #f5f7f6;
-  color: #1f1f2e;
+  background: #f7f8fa;
+  color: #1F2023;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -188,7 +188,7 @@ body {
 .md-reply {
   font-size: 14px;
   line-height: 1.55;
-  color: #1f1f2e;
+  color: #1F2023;
 }
 
 .md-reply > *:first-child {
@@ -209,7 +209,7 @@ body {
 
 .md-reply strong {
   font-weight: 700;
-  color: #1f1f2e;
+  color: #1F2023;
 }
 
 .md-reply em {
@@ -242,7 +242,7 @@ body {
 .md-reply pre {
   margin: 0.5em 0;
   padding: 0.75rem 1rem;
-  background: #f7f7fb;
+  background: #F7F8FA;
   border: 1px solid #e8e8f0;
   border-radius: 10px;
   overflow-x: auto;
