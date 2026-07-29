@@ -114,7 +114,18 @@ export function createApp() {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: '256kb' }));
+  // Never parse JSON on GET — on serverless, awaiting an empty body stream hangs forever (504).
+  {
+    const parser = express.json({ limit: '256kb' });
+    app.use((req, res, next) => {
+      const method = (req.method || 'GET').toUpperCase();
+      if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+      if (req.body != null && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+        return next();
+      }
+      return parser(req, res, next);
+    });
+  }
   app.use(cookieParser());
   app.use('/api', globalApiLimiter);
 

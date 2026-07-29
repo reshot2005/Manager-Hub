@@ -299,11 +299,11 @@ async function handleChatHistory(req, res, method) {
 
 async function getExpressHandler() {
   if (cachedExpress) return cachedExpress;
-  const [{ createApp }, { default: serverless }] = await Promise.all([
-    import('../backend/src/app.js'),
+  const [{ createLeanApp }, { default: serverless }] = await Promise.all([
+    import('../backend/src/leanApp.js'),
     import('serverless-http'),
   ]);
-  cachedExpress = serverless(createApp(), { binary: false });
+  cachedExpress = serverless(createLeanApp(), { binary: false });
   return cachedExpress;
 }
 
@@ -322,7 +322,7 @@ export default async function handler(req, res) {
     if (path === '/api/health' || path === '/health') {
       return sendJson(res, 200, {
         ok: true,
-        deploy: '2026-07-29-v10-hub-first-chat',
+        deploy: '2026-07-29-v11-lean-data-api',
         time: new Date().toISOString(),
         runtime: 'vercel',
         hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
@@ -376,7 +376,7 @@ export default async function handler(req, res) {
         return sendJson(res, 503, {
           ok: false,
           message: 'API is warming up. Retry this page shortly.',
-          deploy: '2026-07-29-v10-hub-first-chat',
+          deploy: '2026-07-29-v11-lean-data-api',
         });
       }
       throw err;
