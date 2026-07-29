@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
@@ -14,10 +14,10 @@ import {
   Settings,
   LogOut,
   X,
-  ChevronRight,
   Fingerprint,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Dock, DockIcon, DockItem, DockLabel } from '@/components/ui/dock';
 
 gsap.registerPlugin(useGSAP);
 
@@ -33,41 +33,17 @@ const NAV_ITEMS = [
   { to: '/sync', icon: Activity, label: 'Data Sync', color: '#6366f1' },
 ];
 
-function LogoMark() {
-  return (
-    <div className="relative h-9 w-9 flex items-center justify-center">
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] shadow-[0_4px_16px_rgba(108,77,255,0.5)]" />
-      <span className="relative text-white font-black text-sm tracking-tight">MH</span>
-    </div>
-  );
-}
-
 export default function AppLayout() {
   const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [expanded, setExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const sidebarRef = useRef(null);
-  const labelRefs = useRef([]);
-
-  useGSAP(() => {
-    if (expanded) {
-      gsap.to(sidebarRef.current, { width: 220, duration: 0.3, ease: 'power2.out' });
-      gsap.to('.nav-label', { opacity: 1, x: 0, duration: 0.25, stagger: 0.03, ease: 'power2.out', delay: 0.1 });
-      gsap.to('.sidebar-logo-text', { opacity: 1, x: 0, duration: 0.2, ease: 'power2.out', delay: 0.05 });
-    } else {
-      gsap.to(sidebarRef.current, { width: 72, duration: 0.25, ease: 'power2.in' });
-      gsap.to('.nav-label', { opacity: 0, x: -8, duration: 0.15, stagger: 0.02, ease: 'power2.in' });
-      gsap.to('.sidebar-logo-text', { opacity: 0, x: -8, duration: 0.15, ease: 'power2.in' });
-    }
-  }, { scope: sidebarRef, dependencies: [expanded] });
 
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#f7f7fb]">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-full border-2 border-[#6c4dff] border-t-transparent animate-spin" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#6c4dff] border-t-transparent" />
           <span className="text-sm text-[#9ca3af]">Loading workspace…</span>
         </div>
       </div>
@@ -83,111 +59,77 @@ export default function AppLayout() {
     .slice(0, 2)
     .toUpperCase();
 
+  const isActive = (to, end) =>
+    end ? location.pathname === to : location.pathname.startsWith(to);
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f7f7fb]">
-      {/* Sidebar */}
-      <aside
-        ref={sidebarRef}
-        style={{ width: 72 }}
-        className="relative z-30 flex shrink-0 flex-col border-r border-[#EDEDF5] bg-white py-4 overflow-hidden"
-      >
-        {/* Logo row */}
-        <div
-          className="mb-5 flex items-center gap-3 px-4 cursor-pointer"
-          onClick={() => setExpanded((v) => !v)}
+    <div className="relative flex h-screen overflow-hidden bg-[#f7f7fb]">
+      {/* Vertical Apple-style dock — left rail */}
+      <aside className="relative z-30 flex h-full w-[88px] shrink-0 flex-col items-center justify-between border-r border-[#EDEDF5]/80 bg-gradient-to-b from-white via-[#faf9ff] to-white py-4">
+        <button
+          type="button"
+          title="Manager Hub"
+          onClick={() => navigate('/')}
+          className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-sm font-black text-white shadow-[0_4px_16px_rgba(108,77,255,0.45)]"
         >
-          <LogoMark />
-          <span className="sidebar-logo-text whitespace-nowrap text-sm font-bold text-[#1f1f2e] opacity-0 translate-x-[-8px]">
-            Manager Hub
-          </span>
+          MH
+        </button>
+
+        <div className="flex min-h-0 flex-1 items-center py-2">
+          <Dock
+            orientation="vertical"
+            panelWidth={64}
+            magnification={70}
+            distance={120}
+            className="!bg-transparent !shadow-none !ring-0 !px-1 !py-2"
+          >
+            {NAV_ITEMS.map(({ to, icon: Icon, label, end, color }) => {
+              const active = isActive(to, end);
+              return (
+                <DockItem
+                  key={to}
+                  active={active}
+                  onClick={() => navigate(to)}
+                  style={active ? { background: `${color}28` } : undefined}
+                >
+                  <DockLabel>{label}</DockLabel>
+                  <DockIcon>
+                    <Icon
+                      className="h-full w-full"
+                      strokeWidth={active ? 2.25 : 1.85}
+                      style={{ color: active ? color : '#6b7280' }}
+                    />
+                  </DockIcon>
+                </DockItem>
+              );
+            })}
+          </Dock>
         </div>
 
-        {/* Main nav */}
-        <nav className="flex flex-1 flex-col gap-1 px-2">
-          {NAV_ITEMS.map(({ to, icon: Icon, label, end, color }) => {
-            const isActive = end
-              ? location.pathname === to
-              : location.pathname.startsWith(to);
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                title={label}
-                className="group flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-all duration-150"
-                style={{
-                  background: isActive ? `${color}18` : 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = `${color}10`;
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <Icon
-                  size={20}
-                  strokeWidth={isActive ? 2.2 : 1.75}
-                  style={{ color: isActive ? color : '#9ca3af', flexShrink: 0 }}
-                />
-                <span
-                  className="nav-label whitespace-nowrap text-[13px] font-medium opacity-0 translate-x-[-8px]"
-                  style={{ color: isActive ? color : '#6b7280' }}
-                >
-                  {label}
-                </span>
-                {isActive && (
-                  <div
-                    className="ml-auto h-1.5 w-1.5 rounded-full shrink-0"
-                    style={{ background: color }}
-                  />
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        {/* Bottom actions */}
-        <div className="flex flex-col gap-1 px-2 pt-2 border-t border-[#EDEDF5] mt-2">
+        <div className="flex flex-col items-center gap-3 pt-2">
           <button
             type="button"
             title="Settings"
             onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-[#9ca3af] transition hover:bg-[#f3f0ff] hover:text-[#6c4dff]"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#9ca3af] transition hover:bg-[#f3f0ff] hover:text-[#6c4dff]"
           >
-            <Settings size={20} strokeWidth={1.75} style={{ flexShrink: 0 }} />
-            <span className="nav-label whitespace-nowrap text-[13px] font-medium opacity-0 translate-x-[-8px]">
-              Settings
-            </span>
+            <Settings size={18} strokeWidth={1.85} />
           </button>
-
           <button
             type="button"
             title={user.name}
-            onClick={() => setExpanded((v) => !v)}
-            className="flex items-center gap-3 rounded-xl px-2 py-2 transition hover:bg-[#f3f0ff]"
+            onClick={() => setSettingsOpen(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-[11px] font-bold text-white ring-2 ring-[#e9e4ff]"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-xs font-bold text-white ring-2 ring-[#e9e4ff]">
-              {initials}
-            </div>
-            <div className="nav-label flex-1 min-w-0 text-left opacity-0 translate-x-[-8px]">
-              <div className="truncate text-[13px] font-semibold text-[#1f1f2e]">{user.name}</div>
-              <div className="truncate text-[11px] text-[#9ca3af]">{user.role || 'Manager'}</div>
-            </div>
-            <ChevronRight
-              size={14}
-              className="nav-label shrink-0 text-[#9ca3af] opacity-0 translate-x-[-8px]"
-            />
+            {initials}
           </button>
         </div>
       </aside>
 
-      {/* Main content */}
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <Outlet />
       </main>
 
-      {/* Settings modal */}
       {settingsOpen && (
         <SettingsModal user={user} onClose={() => setSettingsOpen(false)} onLogout={logout} />
       )}
@@ -198,15 +140,18 @@ export default function AppLayout() {
 function SettingsModal({ user, onClose, onLogout }) {
   const modalRef = useRef(null);
 
-  useGSAP(() => {
-    gsap.from(modalRef.current, {
-      opacity: 0,
-      scale: 0.95,
-      y: 20,
-      duration: 0.25,
-      ease: 'power2.out',
-    });
-  }, { scope: modalRef });
+  useGSAP(
+    () => {
+      gsap.from(modalRef.current, {
+        opacity: 0,
+        scale: 0.95,
+        y: 20,
+        duration: 0.25,
+        ease: 'power2.out',
+      });
+    },
+    { scope: modalRef }
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
@@ -214,16 +159,25 @@ function SettingsModal({ user, onClose, onLogout }) {
         ref={modalRef}
         className="w-full max-w-sm rounded-2xl border border-[#EDEDF5] bg-white p-6 shadow-2xl"
       >
-        <div className="flex items-center justify-between mb-5">
+        <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-bold text-[#1f1f2e]">Settings</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-[#f3f0ff] text-[#9ca3af]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-[#9ca3af] hover:bg-[#f3f0ff]"
+          >
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex items-center gap-4 rounded-xl bg-[#f7f7fb] p-4 mb-5">
+        <div className="mb-5 flex items-center gap-4 rounded-xl bg-[#f7f7fb] p-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-sm font-bold text-white">
-            {(user.name || 'M').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
+            {(user.name || 'M')
+              .split(' ')
+              .map((p) => p[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase()}
           </div>
           <div>
             <div className="font-semibold text-[#1f1f2e]">{user.name}</div>
@@ -236,13 +190,17 @@ function SettingsModal({ user, onClose, onLogout }) {
 
         <div className="space-y-2">
           <div className="rounded-xl border border-[#EDEDF5] p-3">
-            <div className="text-[11px] text-[#9ca3af] uppercase tracking-wide mb-1">Version</div>
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-[#9ca3af]">Version</div>
             <div className="text-sm font-medium text-[#1f1f2e]">Manager Hub v1.0</div>
           </div>
         </div>
 
         <button
-          onClick={() => { onLogout(); onClose(); }}
+          type="button"
+          onClick={() => {
+            onLogout();
+            onClose();
+          }}
           className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-100"
         >
           <LogOut size={16} />

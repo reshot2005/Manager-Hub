@@ -3,42 +3,87 @@ import ReactMarkdown from 'react-markdown';
 import {
   Sparkles,
   Globe,
-  Paperclip,
-  Image as ImageIcon,
   Send,
-  MessageSquare,
   ChevronDown,
   ArrowLeft,
+  ClipboardList,
+  AlertTriangle,
+  UserCheck,
+  UserRoundSearch,
+  MessageSquare,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { BentoCard, BentoGrid } from '@/components/ui/bento-grid';
 
 const MAX_CHARS = 1000;
 
-const DEFAULT_RECENTS = [
+const SUGGESTED_BENTO = [
   {
     id: 's1',
-    title: "Today's daily briefing",
-    prompt: "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews",
-    ago: 'Suggested',
+    name: "Today's daily briefing",
+    description: 'Attendance, missing EODs, overdue tasks, and interviews — one morning snapshot.',
+    prompt:
+      "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews",
+    Icon: ClipboardList,
+    cta: 'Ask now',
+    className: 'lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3',
+    background: (
+      <img
+        src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=60"
+        alt=""
+        className="absolute -right-16 -top-16 h-56 w-56 rounded-full object-cover opacity-25"
+      />
+    ),
   },
   {
     id: 's2',
-    title: 'Who needs attention?',
-    prompt: 'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work?',
-    ago: 'Suggested',
+    name: 'Who needs attention?',
+    description: 'Absentees, late vs shift, missing EODs, and overdue work that needs you.',
+    prompt:
+      'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work?',
+    Icon: AlertTriangle,
+    cta: 'Ask now',
+    className: 'lg:col-start-2 lg:col-end-4 lg:row-start-1 lg:row-end-2',
+    background: (
+      <img
+        src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=60"
+        alt=""
+        className="absolute -right-10 -top-10 h-48 w-72 object-cover opacity-20"
+      />
+    ),
   },
   {
     id: 's3',
-    title: 'Present / absent / late',
-    prompt: 'Who is present, absent, or late today? Include late minutes vs each person\'s shift.',
-    ago: 'Suggested',
+    name: 'Present / absent / late',
+    description: "Live headcount with late minutes vs each person's shift.",
+    prompt: "Who is present, absent, or late today? Include late minutes vs each person's shift.",
+    Icon: UserCheck,
+    cta: 'Ask now',
+    className: 'lg:col-start-2 lg:col-end-3 lg:row-start-2 lg:row-end-3',
+    background: (
+      <img
+        src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=60"
+        alt=""
+        className="absolute -right-12 -top-8 h-44 w-56 object-cover opacity-20"
+      />
+    ),
   },
   {
     id: 's4',
-    title: 'Full employee status',
+    name: 'Full employee status',
+    description: 'Attendance, open tasks, EOD, and blockers for one person.',
     prompt: "Give me Jeevan's full status today — attendance, open tasks, EOD, and any blockers",
-    ago: 'Suggested',
+    Icon: UserRoundSearch,
+    cta: 'Ask now',
+    className: 'lg:col-start-3 lg:col-end-4 lg:row-start-2 lg:row-end-3',
+    background: (
+      <img
+        src="https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60"
+        alt=""
+        className="absolute -right-10 -top-10 h-48 w-48 rounded-2xl object-cover opacity-20"
+      />
+    ),
   },
 ];
 
@@ -94,14 +139,39 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, busy]);
 
-  const recentCards = useMemo(() => {
+  const recentBento = useMemo(() => {
     const userMsgs = messages.filter((m) => m.role === 'user').slice(-6).reverse();
-    if (!userMsgs.length) return DEFAULT_RECENTS;
-    return userMsgs.slice(0, 3).map((m, i) => ({
+    if (!userMsgs.length) return SUGGESTED_BENTO;
+
+    const layouts = [
+      'lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3',
+      'lg:col-start-2 lg:col-end-4 lg:row-start-1 lg:row-end-2',
+      'lg:col-start-2 lg:col-end-3 lg:row-start-2 lg:row-end-3',
+      'lg:col-start-3 lg:col-end-4 lg:row-start-2 lg:row-end-3',
+    ];
+    const icons = [MessageSquare, ClipboardList, UserCheck, AlertTriangle];
+    const images = [
+      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=60',
+      'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=60',
+      'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=60',
+      'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60',
+    ];
+
+    return userMsgs.slice(0, 4).map((m, i) => ({
       id: m.id || `r-${i}`,
-      title: m.content.length > 56 ? `${m.content.slice(0, 56)}…` : m.content,
+      name: m.content.length > 48 ? `${m.content.slice(0, 48)}…` : m.content,
+      description: relativeAgo(m.created_at) || 'Recent',
       prompt: m.content,
-      ago: relativeAgo(m.created_at) || 'Recent',
+      Icon: icons[i % icons.length],
+      cta: 'Ask again',
+      className: layouts[i] || 'lg:col-span-1',
+      background: (
+        <img
+          src={images[i % images.length]}
+          alt=""
+          className="absolute -right-12 -top-10 h-48 w-56 object-cover opacity-20"
+        />
+      ),
     }));
   }, [messages]);
 
@@ -163,12 +233,11 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      {/* soft purple wash like the mock */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_420px_at_50%_-80px,rgba(167,139,250,0.22),transparent_70%)]" />
 
       {!inConversation ? (
         <div className="relative z-10 flex h-full flex-col overflow-y-auto px-6 pb-10 pt-12 md:px-10">
-          <div className="mx-auto flex w-full max-w-[720px] flex-col items-center">
+          <div className="mx-auto flex w-full max-w-[960px] flex-col items-center">
             <div className="relative mb-6">
               <div className="absolute inset-0 scale-125 rounded-full bg-brand/20 blur-2xl" />
               <img
@@ -181,7 +250,7 @@ export default function ChatPage() {
             <h1 className="text-center text-[32px] font-bold tracking-tight text-brand-ink md:text-[36px]">
               {greetingForNow()}, {firstName(user?.name)}
             </h1>
-            <p className="mt-2 text-center text-[15px] text-mute">
+            <p className="mt-2 max-w-[720px] text-center text-[15px] text-mute">
               Real-time co-pilot for attendance, tasks, EODs, and hiring — ask anything about your team.
             </p>
 
@@ -197,27 +266,25 @@ export default function ChatPage() {
               onSend={() => send()}
               onKeyDown={onKeyDown}
               textareaRef={textareaRef}
-              className="mt-8 w-full"
+              className="mt-8 w-full max-w-[720px]"
             />
 
             <div className="mt-10 w-full">
               <h2 className="mb-4 text-[17px] font-semibold text-ink">Your recents chats</h2>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {recentCards.map((card) => (
-                  <button
+              <BentoGrid className="lg:grid-rows-2">
+                {recentBento.map((card) => (
+                  <BentoCard
                     key={card.id}
-                    type="button"
+                    name={card.name}
+                    description={card.description}
+                    Icon={card.Icon}
+                    background={card.background}
+                    className={card.className}
+                    cta={card.cta}
                     onClick={() => send(card.prompt)}
-                    className="recent-card"
-                  >
-                    <MessageSquare size={18} className="mb-3 text-mute" strokeWidth={1.75} />
-                    <p className="min-h-[44px] text-[14px] font-semibold leading-snug text-ink">
-                      {card.title}
-                    </p>
-                    <p className="mt-4 text-[12px] text-mute">{card.ago}</p>
-                  </button>
+                  />
                 ))}
-              </div>
+              </BentoGrid>
             </div>
           </div>
         </div>
@@ -374,38 +441,19 @@ function PromptCard({
           className="w-full resize-none border-0 bg-transparent text-[15px] text-ink outline-none placeholder:text-mute disabled:opacity-60"
         />
 
-        <div className="mt-2 flex items-center justify-between gap-3 border-t border-edge/70 pt-3">
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-mute hover:bg-brand-mist hover:text-brand"
-            >
-              <Paperclip size={14} />
-              Add Attachment
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-mute hover:bg-brand-mist hover:text-brand"
-            >
-              <ImageIcon size={14} />
-              Use Image
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-[12px] tabular-nums text-mute">
-              {input.length}/{MAX_CHARS}
-            </span>
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={busy || !input.trim()}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white shadow-[0_8px_18px_rgba(108,77,255,0.35)] transition hover:bg-brand-deep disabled:opacity-40"
-              aria-label="Send"
-            >
-              <Send size={16} />
-            </button>
-          </div>
+        <div className="mt-2 flex items-center justify-end gap-3 border-t border-edge/70 pt-3">
+          <span className="text-[12px] tabular-nums text-mute">
+            {input.length}/{MAX_CHARS}
+          </span>
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={busy || !input.trim()}
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white shadow-[0_8px_18px_rgba(108,77,255,0.35)] transition hover:bg-brand-deep disabled:opacity-40"
+            aria-label="Send"
+          >
+            <Send size={16} />
+          </button>
         </div>
       </div>
     </div>
