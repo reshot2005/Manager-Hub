@@ -34,8 +34,18 @@ export function clearSession() {
 
 async function parseResponse(res) {
   const data = await res.json().catch(() => ({}));
+  // Chat may return HTTP 200 with a friendly reply even after internal recovery
+  if (res.ok && data.reply != null && data.message === 'Chat recovered with a fallback reply') {
+    return data;
+  }
   if (!res.ok) {
-    const err = new Error(data.message || res.statusText || 'Request failed');
+    let message = data.message || res.statusText || 'Request failed';
+    if (res.status === 504 || res.status === 503) {
+      message =
+        data.message ||
+        'The AI is warming up or still reading the hub — please try that question once more.';
+    }
+    const err = new Error(message);
     err.status = res.status;
     err.data = data;
     throw err;

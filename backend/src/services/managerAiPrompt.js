@@ -47,7 +47,7 @@ TOOL ROUTING (call tools — do not answer from memory)
 | Daily briefing / standup / who needs attention | getDailyBriefing (then extras if needed) |
 | Present / absent / late today | getAttendanceToday |
 | Login timings / who came after X | getLoginTiming |
-| Absentees this week / on date | getAbsentees |
+| Absentees this week / on date / **yesterday** | getAbsentees with date=yesterday_ist (never invent) |
 | Person attendance / days worked / punches | getEmployeeAttendance and/or getWorkedDaysSummary |
 | What is X working on / is task done | getEmployeeStatus or getEmployeeFullProfile |
 | Full snapshot of one employee | getEmployeeFullProfile |
@@ -110,13 +110,15 @@ You are the manager's real-time operating system for people. Be precise. Be usef
 }
 
 /** Prepend live IST context so the model never guesses "today". */
-export function buildUserTurnWithContext(userMessage, { todayIst, nowIst } = {}) {
+export function buildUserTurnWithContext(userMessage, { todayIst, nowIst, yesterdayIst } = {}) {
   const ctx = [
     `[SYSTEM CONTEXT — not from the manager]`,
     `today_ist=${todayIst || 'unknown'}`,
+    `yesterday_ist=${yesterdayIst || 'unknown'}`,
     `now_ist=${nowIst || 'unknown'}`,
     `timezone=Asia/Kolkata`,
-    `Use tools for all facts. Answer in Manager AI voice.`,
+    `For "yesterday" absentees → getAbsentees({ date: yesterday_ist }).`,
+    `Answer warmly: Quick take + named bullets + optional next step. Use tools for all facts.`,
     ``,
     `[MANAGER MESSAGE]`,
     userMessage,

@@ -4,15 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas: '#F7F7FB',
+        canvas: '#F5F7F6',
         brand: {
-          DEFAULT: '#6C4DFF',
-          deep: '#5B3DF5',
-          soft: '#EDE9FE',
-          mist: '#F3F0FF',
-          ink: '#2D1B69',
+          DEFAULT: '#0F766E',
+          deep: '#115E59',
+          soft: '#CCFBF1',
+          mist: '#F0FDFA',
+          ink: '#134E4A',
         },
-        edge: '#E8E8F0',
+        edge: '#E5E7EB',
         mute: '#9CA3AF',
         ink: {
           DEFAULT: '#1F1F2E',
@@ -23,8 +23,8 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        card: '0 4px 24px rgba(99, 70, 255, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04)',
-        prompt: '0 8px 32px rgba(99, 70, 255, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04)',
+        card: '0 4px 24px rgba(15, 118, 110, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04)',
+        prompt: '0 8px 32px rgba(15, 118, 110, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04)',
       },
     },
   },

@@ -17,12 +17,13 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 
-const DOCK_SIZE = 128;
-const DEFAULT_MAGNIFICATION = 72;
-const DEFAULT_DISTANCE = 140;
-const DEFAULT_PANEL_SIZE = 64;
+const DOCK_SIZE = 96;
+const DEFAULT_MAGNIFICATION = 48;
+const DEFAULT_DISTANCE = 110;
+const DEFAULT_PANEL_SIZE = 48;
 
 const DockContext = createContext(undefined);
 
@@ -71,8 +72,8 @@ function Dock({
           : { height: animatedSize, scrollbarWidth: 'none' }
       }
       className={cn(
-        'flex max-h-full max-w-full',
-        isVertical ? 'flex-row items-center overflow-y-auto' : 'flex-col items-end overflow-x-auto'
+        'flex max-h-full max-w-full overflow-visible',
+        isVertical ? 'flex-row items-center' : 'flex-col items-end'
       )}
     >
       <motion.div
@@ -85,7 +86,7 @@ function Dock({
           mousePos.set(Infinity);
         }}
         className={cn(
-          'mx-auto flex w-fit gap-3 rounded-2xl bg-white/90 px-3 py-3 shadow-[0_8px_32px_rgba(99,70,255,0.12)] ring-1 ring-[#EDEDF5] backdrop-blur-md dark:bg-neutral-900',
+          'mx-auto flex w-fit gap-2.5 overflow-visible rounded-2xl bg-white/90 px-2.5 py-2.5 shadow-[0_8px_32px_rgba(15,118,110,0.1)] ring-1 ring-[#EDEDF5] backdrop-blur-md dark:bg-neutral-900',
           isVertical ? 'flex-col items-center' : 'flex-row items-end',
           className
         )}
@@ -114,6 +115,18 @@ function DockItem({ children, className, onClick, active, style }) {
   const { distance, magnification, mousePos, spring, orientation } = useDock();
   const isVertical = orientation === 'vertical';
   const isHovered = useMotionValue(0);
+  const [anchor, setAnchor] = useState(null);
+
+  const updateAnchor = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setAnchor({
+      top: r.top + r.height / 2,
+      left: r.right,
+      bottom: r.top,
+      centerX: r.left + r.width / 2,
+    });
+  };
 
   const mouseDistance = useTransform(mousePos, (val) => {
     const domRect = ref.current?.getBoundingClientRect() ?? {
@@ -131,7 +144,7 @@ function DockItem({ children, className, onClick, active, style }) {
   const sizeTransform = useTransform(
     mouseDistance,
     [-distance, 0, distance],
-    [40, magnification, 40]
+    [32, magnification, 32]
   );
   const size = useSpring(sizeTransform, spring);
 
@@ -142,10 +155,22 @@ function DockItem({ children, className, onClick, active, style }) {
         ...(isVertical ? { height: size, width: size } : { width: size }),
         ...style,
       }}
-      onHoverStart={() => isHovered.set(1)}
-      onHoverEnd={() => isHovered.set(0)}
-      onFocus={() => isHovered.set(1)}
-      onBlur={() => isHovered.set(0)}
+      onHoverStart={() => {
+        isHovered.set(1);
+        updateAnchor();
+      }}
+      onHoverEnd={() => {
+        isHovered.set(0);
+        setAnchor(null);
+      }}
+      onFocus={() => {
+        isHovered.set(1);
+        updateAnchor();
+      }}
+      onBlur={() => {
+        isHovered.set(0);
+        setAnchor(null);
+      }}
       onClick={onClick}
       onKeyDown={(e) => {
         if (onClick && (e.key === 'Enter' || e.key === ' ')) {
@@ -156,8 +181,8 @@ function DockItem({ children, className, onClick, active, style }) {
       className={cn(
         'relative inline-flex aspect-square cursor-pointer items-center justify-center rounded-full transition-colors',
         active
-          ? 'ring-2 ring-[#6c4dff]/35'
-          : 'bg-gray-100/90 hover:bg-gray-200',
+          ? 'ring-2 ring-[#0F766E]/35'
+          : 'bg-white/55 hover:bg-white/90',
         className
       )}
       tabIndex={0}
@@ -167,7 +192,7 @@ function DockItem({ children, className, onClick, active, style }) {
     >
       {Children.map(children, (child) => {
         if (!child || typeof child !== 'object') return child;
-        return cloneElement(child, { width: size, isHovered });
+        return cloneElement(child, { width: size, isHovered, anchor });
       })}
     </motion.div>
   );
@@ -177,6 +202,7 @@ function DockLabel({ children, className, ...rest }) {
   const { orientation } = useDock();
   const isVertical = orientation === 'vertical';
   const isHovered = rest.isHovered;
+  const anchor = rest.anchor;
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -187,21 +213,29 @@ function DockLabel({ children, className, ...rest }) {
     return () => unsubscribe();
   }, [isHovered]);
 
-  return (
+  const label = (
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ opacity: 0, ...(isVertical ? { x: -4 } : { y: 0 }) }}
-          animate={{ opacity: 1, ...(isVertical ? { x: 8 } : { y: -10 }) }}
-          exit={{ opacity: 0, ...(isVertical ? { x: -4 } : { y: 0 }) }}
-          transition={{ duration: 0.18 }}
+          initial={{ opacity: 0, ...(isVertical ? { x: -6 } : { y: 4 }) }}
+          animate={{ opacity: 1, ...(isVertical ? { x: 0 } : { y: -10 }) }}
+          exit={{ opacity: 0, ...(isVertical ? { x: -6 } : { y: 4 }) }}
+          transition={{ duration: 0.16 }}
           className={cn(
-            'pointer-events-none absolute z-50 w-fit whitespace-pre rounded-md border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-neutral-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-800 dark:text-white',
-            isVertical
-              ? 'left-full top-1/2 -translate-y-1/2'
-              : 'left-1/2 top-0 -translate-x-1/2 -translate-y-full',
+            'pointer-events-none z-[9999] w-fit whitespace-nowrap rounded-lg bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white shadow-lg',
+            !isVertical && 'absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full',
             className
           )}
+          style={
+            isVertical && anchor
+              ? {
+                  position: 'fixed',
+                  top: anchor.top,
+                  left: anchor.left + 12,
+                  transform: 'translateY(-50%)',
+                }
+              : undefined
+          }
           role="tooltip"
         >
           {children}
@@ -209,11 +243,17 @@ function DockLabel({ children, className, ...rest }) {
       )}
     </AnimatePresence>
   );
+
+  if (isVertical && typeof document !== 'undefined') {
+    return createPortal(label, document.body);
+  }
+
+  return label;
 }
 
 function DockIcon({ children, className, ...rest }) {
   const width = rest.width;
-  const widthTransform = useTransform(width, (val) => val / 2);
+  const widthTransform = useTransform(width, (val) => val * 0.42);
 
   return (
     <motion.div

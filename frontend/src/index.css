@@ -19,7 +19,7 @@ body,
 body {
   margin: 0;
   font-family: Inter, system-ui, sans-serif;
-  background: #f7f7fb;
+  background: #f5f7f6;
   color: #1f1f2e;
   -webkit-font-smoothing: antialiased;
 }
@@ -35,14 +35,14 @@ body {
 
 .prompt-card {
   background: #fff;
-  border: 1px solid #e8e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(99, 70, 255, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 8px 32px rgba(15, 118, 110, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .recent-card {
   background: #fff;
-  border: 1px solid #e8e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 16px;
   padding: 1.25rem;
   text-align: left;
@@ -50,8 +50,8 @@ body {
 }
 
 .recent-card:hover {
-  border-color: rgba(108, 77, 255, 0.3);
-  box-shadow: 0 4px 24px rgba(99, 70, 255, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 118, 110, 0.3);
+  box-shadow: 0 4px 24px rgba(15, 118, 110, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .icon-btn {
@@ -66,13 +66,13 @@ body {
 }
 
 .icon-btn:hover {
-  background: #f3f0ff;
-  color: #6c4dff;
+  background: #f0fdfa;
+  color: #0f766e;
 }
 
 .icon-btn-active {
-  background: #f3f0ff;
-  color: #6c4dff;
+  background: #f0fdfa;
+  color: #0f766e;
 }
 
 /* AI reply markdown */
@@ -118,14 +118,14 @@ body {
 }
 
 .md-reply li::marker {
-  color: #6c4dff;
+  color: #0f766e;
 }
 
 .md-reply code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;
-  background: #f3f0ff;
-  color: #5b3df5;
+  background: #f0fdfa;
+  color: #115e59;
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
@@ -146,7 +146,7 @@ body {
 }
 
 .md-reply a {
-  color: #6c4dff;
+  color: #0f766e;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

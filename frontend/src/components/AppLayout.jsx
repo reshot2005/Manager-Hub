@@ -2,6 +2,7 @@ import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import {
   Home,
   BarChart2,
@@ -22,16 +23,63 @@ import { Dock, DockIcon, DockItem, DockLabel } from '@/components/ui/dock';
 gsap.registerPlugin(useGSAP);
 
 const NAV_ITEMS = [
-  { to: '/', icon: Home, label: 'AI Chat', end: true, color: '#6c4dff' },
-  { to: '/dashboard', icon: BarChart2, label: 'Dashboard', color: '#0ea5e9' },
-  { to: '/employees', icon: Users, label: 'Employees', color: '#10b981' },
-  { to: '/attendance', icon: Fingerprint, label: 'Attendance', color: '#059669' },
-  { to: '/eod', icon: FileText, label: 'EOD Reports', color: '#f59e0b' },
-  { to: '/tasks', icon: CheckSquare, label: 'Tasks', color: '#ef4444' },
-  { to: '/candidates', icon: UserRoundSearch, label: 'Candidates', color: '#8b5cf6' },
-  { to: '/interviews', icon: Calendar, label: 'Interviews', color: '#06b6d4' },
-  { to: '/sync', icon: Activity, label: 'Data Sync', color: '#6366f1' },
+  { to: '/', icon: Home, label: 'AI Chat', end: true, color: '#0F766E' },
+  { to: '/dashboard', icon: BarChart2, label: 'Dashboard', color: '#0EA5E9' },
+  { to: '/employees', icon: Users, label: 'Employees', color: '#059669' },
+  { to: '/attendance', icon: Fingerprint, label: 'Attendance', color: '#0D9488' },
+  { to: '/eod', icon: FileText, label: 'EOD Reports', color: '#D97706' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks', color: '#DC2626' },
+  { to: '/candidates', icon: UserRoundSearch, label: 'Candidates', color: '#CA8A04' },
+  { to: '/interviews', icon: Calendar, label: 'Interviews', color: '#0891B2' },
+  { to: '/sync', icon: Activity, label: 'Data Sync', color: '#475569' },
 ];
+
+function MagneticAvatar({ initials, name, onClick }) {
+  const ref = useRef(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotate = useMotionValue(0);
+  const springX = useSpring(x, { stiffness: 180, damping: 14, mass: 0.4 });
+  const springY = useSpring(y, { stiffness: 180, damping: 14, mass: 0.4 });
+  const springRotate = useSpring(rotate, { stiffness: 200, damping: 16 });
+
+  function onMove(e) {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2);
+    const dy = e.clientY - (r.top + r.height / 2);
+    x.set(dx * 0.32);
+    y.set(dy * 0.32);
+    rotate.set(dx * 0.08);
+  }
+
+  function onLeave() {
+    x.set(0);
+    y.set(0);
+    rotate.set(0);
+  }
+
+  return (
+    <motion.button
+      ref={ref}
+      type="button"
+      title={name}
+      onClick={onClick}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      style={{ x: springX, y: springY, rotate: springRotate }}
+      className="group relative flex h-11 w-11 items-center justify-center"
+      whileTap={{ scale: 0.94 }}
+    >
+      <span className="absolute inset-0 rounded-full bg-gradient-to-br from-[#0F766E] via-[#14B8A6] to-[#CA8A04] opacity-80 blur-[10px] transition group-hover:opacity-100" />
+      <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#115E59] via-[#0F766E] to-[#134E4A] text-[12px] font-bold tracking-wide text-white shadow-[0_8px_24px_rgba(15,118,110,0.45)] ring-2 ring-white/80">
+        <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.35),transparent_55%)]" />
+        <span className="relative">{initials}</span>
+      </span>
+    </motion.button>
+  );
+}
 
 export default function AppLayout() {
   const { user, logout, loading } = useAuth();
@@ -41,9 +89,9 @@ export default function AppLayout() {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#f7f7fb]">
+      <div className="grid min-h-screen place-items-center bg-[#f5f7f6]">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#6c4dff] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0F766E] border-t-transparent" />
           <span className="text-sm text-[#9ca3af]">Loading workspace…</span>
         </div>
       </div>
@@ -63,25 +111,25 @@ export default function AppLayout() {
     end ? location.pathname === to : location.pathname.startsWith(to);
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-[#f7f7fb]">
-      {/* Vertical Apple-style dock — left rail */}
-      <aside className="relative z-30 flex h-full w-[88px] shrink-0 flex-col items-center justify-between border-r border-[#EDEDF5]/80 bg-gradient-to-b from-white via-[#faf9ff] to-white py-4">
+    <div className="relative h-screen overflow-hidden bg-[#f5f7f6]">
+      {/* Transparent floating dock overlay */}
+      <aside className="pointer-events-none absolute inset-y-0 left-0 z-40 flex w-[76px] flex-col items-center justify-between overflow-visible bg-transparent py-5">
         <button
           type="button"
           title="Manager Hub"
           onClick={() => navigate('/')}
-          className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-sm font-black text-white shadow-[0_4px_16px_rgba(108,77,255,0.45)]"
+          className="pointer-events-auto mb-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0F766E] to-[#134E4A] text-[12px] font-black text-white shadow-[0_6px_20px_rgba(15,118,110,0.4)]"
         >
           MH
         </button>
 
-        <div className="flex min-h-0 flex-1 items-center py-2">
+        <div className="pointer-events-auto flex min-h-0 flex-1 items-center overflow-visible py-2">
           <Dock
             orientation="vertical"
-            panelWidth={64}
-            magnification={70}
-            distance={120}
-            className="!bg-transparent !shadow-none !ring-0 !px-1 !py-2"
+            panelWidth={52}
+            magnification={48}
+            distance={100}
+            className="!gap-2 !bg-transparent !px-1 !py-1 !shadow-none !ring-0"
           >
             {NAV_ITEMS.map(({ to, icon: Icon, label, end, color }) => {
               const active = isActive(to, end);
@@ -90,14 +138,18 @@ export default function AppLayout() {
                   key={to}
                   active={active}
                   onClick={() => navigate(to)}
-                  style={active ? { background: `${color}28` } : undefined}
+                  style={
+                    active
+                      ? { background: `${color}24` }
+                      : { background: 'rgba(255,255,255,0.55)' }
+                  }
                 >
                   <DockLabel>{label}</DockLabel>
                   <DockIcon>
                     <Icon
                       className="h-full w-full"
-                      strokeWidth={active ? 2.25 : 1.85}
-                      style={{ color: active ? color : '#6b7280' }}
+                      strokeWidth={active ? 2.1 : 1.7}
+                      style={{ color: active ? color : '#64748b' }}
                     />
                   </DockIcon>
                 </DockItem>
@@ -106,27 +158,24 @@ export default function AppLayout() {
           </Dock>
         </div>
 
-        <div className="flex flex-col items-center gap-3 pt-2">
+        <div className="pointer-events-auto flex flex-col items-center gap-3 pt-2">
           <button
             type="button"
             title="Settings"
             onClick={() => setSettingsOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-[#9ca3af] transition hover:bg-[#f3f0ff] hover:text-[#6c4dff]"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/60 text-[#94a3b8] backdrop-blur-sm transition hover:bg-white hover:text-[#0F766E]"
           >
-            <Settings size={18} strokeWidth={1.85} />
+            <Settings size={16} strokeWidth={1.85} />
           </button>
-          <button
-            type="button"
-            title={user.name}
+          <MagneticAvatar
+            initials={initials}
+            name={user.name}
             onClick={() => setSettingsOpen(true)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-[11px] font-bold text-white ring-2 ring-[#e9e4ff]"
-          >
-            {initials}
-          </button>
+          />
         </div>
       </aside>
 
-      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <main className="h-full min-h-0 w-full overflow-hidden pl-[72px]">
         <Outlet />
       </main>
 
@@ -157,39 +206,42 @@ function SettingsModal({ user, onClose, onLogout }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div
         ref={modalRef}
-        className="w-full max-w-sm rounded-2xl border border-[#EDEDF5] bg-white p-6 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-2xl"
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-bold text-[#1f1f2e]">Settings</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[#9ca3af] hover:bg-[#f3f0ff]"
+            className="rounded-lg p-1.5 text-[#9ca3af] hover:bg-[#F0FDFA]"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="mb-5 flex items-center gap-4 rounded-xl bg-[#f7f7fb] p-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#6c4dff] to-[#4f46e5] text-sm font-bold text-white">
-            {(user.name || 'M')
-              .split(' ')
-              .map((p) => p[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase()}
+        <div className="mb-5 flex items-center gap-4 rounded-xl bg-[#F0FDFA] p-4">
+          <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#115E59] via-[#0F766E] to-[#134E4A] text-sm font-bold text-white shadow-[0_6px_16px_rgba(15,118,110,0.35)]">
+            <span className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.35),transparent_55%)]" />
+            <span className="relative">
+              {(user.name || 'M')
+                .split(' ')
+                .map((p) => p[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase()}
+            </span>
           </div>
           <div>
             <div className="font-semibold text-[#1f1f2e]">{user.name}</div>
             <div className="text-sm text-[#9ca3af]">{user.email}</div>
-            <div className="mt-0.5 inline-block rounded-full bg-[#6c4dff]/10 px-2 py-0.5 text-[11px] font-medium text-[#6c4dff]">
+            <div className="mt-0.5 inline-block rounded-full bg-[#0F766E]/10 px-2 py-0.5 text-[11px] font-medium text-[#0F766E]">
               {user.role || 'MANAGER'}
             </div>
           </div>
         </div>
 
         <div className="space-y-2">
-          <div className="rounded-xl border border-[#EDEDF5] p-3">
+          <div className="rounded-xl border border-[#E5E7EB] p-3">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-[#9ca3af]">Version</div>
             <div className="text-sm font-medium text-[#1f1f2e]">Manager Hub v1.0</div>
           </div>

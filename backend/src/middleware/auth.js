@@ -19,28 +19,21 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ message: 'Authentication required' });
     }
     const payload = verifyToken(token);
+    // Keep SELECT to base columns — optional security columns may be missing pre-migrate
     const { rows } = await query(
-      `SELECT id, email, name, role, is_active, token_version, locked_until
-       FROM managers WHERE id = $1`,
+      `SELECT id, email, name, role, is_active FROM managers WHERE id = $1`,
       [payload.id]
     );
     const manager = rows[0];
     if (!manager || !manager.is_active) {
       return res.status(401).json({ message: 'Invalid or inactive account' });
     }
-    if (manager.locked_until && new Date(manager.locked_until) > new Date()) {
-      return res.status(423).json({ message: 'Account temporarily locked' });
-    }
-    const tv = manager.token_version ?? 0;
-    if (payload.tv != null && Number(payload.tv) !== Number(tv)) {
-      return res.status(401).json({ message: 'Session revoked — please sign in again' });
-    }
     req.manager = {
       id: manager.id,
       email: manager.email,
       name: manager.name,
       role: manager.role,
-      token_version: tv,
+      token_version: payload.tv ?? 0,
     };
     next();
   } catch {

@@ -322,7 +322,7 @@ export default function ChatPage() {
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-relaxed ${
                       m.role === 'user'
-                        ? 'whitespace-pre-wrap rounded-br-md bg-brand text-white shadow-[0_8px_20px_rgba(108,77,255,0.25)]'
+                        ? 'whitespace-pre-wrap rounded-br-md bg-brand text-white shadow-[0_8px_20px_rgba(15,118,110,0.25)]'
                         : 'rounded-bl-md border border-edge bg-white text-ink shadow-card'
                     }`}
                   >
@@ -449,7 +449,7 @@ function PromptCard({
             type="button"
             onClick={onSend}
             disabled={busy || !input.trim()}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white shadow-[0_8px_18px_rgba(108,77,255,0.35)] transition hover:bg-brand-deep disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-white shadow-[0_8px_18px_rgba(15,118,110,0.35)] transition hover:bg-brand-deep disabled:opacity-40"
             aria-label="Send"
           >
             <Send size={16} />
