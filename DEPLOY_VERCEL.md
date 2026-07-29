@@ -67,14 +67,23 @@ Click **Deploy**. After success:
 3. Check **Data Sync** (admin) and ask Manager AI for today’s briefing
 4. Hit `/api/health` — should return `ok: true`
 
-## 7. Automatic jobs (already in `vercel.json`)
+## 7. Automatic jobs (Hobby-compatible)
+
+Vercel **Hobby** only allows cron schedules that run **at most once per day**.  
+More frequent sync needs Pro, or an external ping (below).
 
 | Cron | Path | Purpose |
 |------|------|---------|
-| Every 5 min | `/api/sync/cron` | Pull sources into hub (rotates sources) |
+| Daily 01:00 UTC | `/api/sync/cron` | Pull sources into hub |
 | Every 3 days @ 03:00 UTC | `/api/backup/cron` | Logical backup + retention |
 
-Vercel Cron sends `x-vercel-cron: 1`. Also set `CRON_SECRET` for manual triggers:
+**Optional — sync more often on Hobby:** use [cron-job.org](https://cron-job.org) (or similar) hourly:
+
+```bash
+curl -X POST "https://YOUR_APP.vercel.app/api/sync/cron" -H "x-cron-secret: YOUR_CRON_SECRET"
+```
+
+Vercel Cron also sends `x-vercel-cron: 1`. Manual trigger:
 
 ```bash
 curl -X POST "https://YOUR_APP.vercel.app/api/sync/cron" -H "x-cron-secret: YOUR_CRON_SECRET"
