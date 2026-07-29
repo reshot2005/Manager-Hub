@@ -1,6 +1,7 @@
 /**
  * Vercel serverless entry.
  * Health responds with ZERO backend imports so cold-start/DB issues cannot 504 it.
+ * /api/health/db uses Neon serverless WebSocket (not TCP pg).
  * Full Express app is lazy-loaded for all other routes.
  */
 
@@ -23,22 +24,62 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function isHealthPath(url) {
-  const path = String(url || '').split('?')[0];
-  return path === '/api/health' || path === '/health';
+function pathOnly(url) {
+  return String(url || '').split('?')[0];
+}
+
+async function pingDb() {
+  const { normalizeDatabaseUrl } = await import('../backend/src/config/dbUrl.js');
+  const { Pool, neonConfig } = await import('@neondatabase/serverless');
+  if (typeof WebSocket === 'undefined') {
+    const ws = (await import('ws')).default;
+    neonConfig.webSocketConstructor = ws;
+  }
+  const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
+  if (!connectionString) throw new Error('DATABASE_URL missing');
+  const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 8_000 });
+  try {
+    const r = await pool.query('select 1::int as ok, now() as n');
+    return r.rows[0];
+  } finally {
+    await pool.end();
+  }
 }
 
 export default async function handler(req, res) {
   try {
-    if (isHealthPath(req.url)) {
+    const path = pathOnly(req.url);
+
+    if (path === '/api/health' || path === '/health') {
       sendJson(res, 200, {
         ok: true,
-        deploy: '2026-07-29-v5-lazy',
+        deploy: '2026-07-29-v6-neon-ws',
         time: new Date().toISOString(),
         runtime: 'vercel',
         hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
         hasJwtSecret: Boolean(process.env.JWT_SECRET),
       });
+      return;
+    }
+
+    if (path === '/api/health/db') {
+      const started = Date.now();
+      try {
+        const row = await pingDb();
+        sendJson(res, 200, {
+          ok: true,
+          db: row,
+          ms: Date.now() - started,
+          driver: 'neon-serverless',
+        });
+      } catch (err) {
+        sendJson(res, 503, {
+          ok: false,
+          error: 'database_unreachable',
+          detail: String(err?.message || err).slice(0, 200),
+          ms: Date.now() - started,
+        });
+      }
       return;
     }
 
