@@ -27,7 +27,7 @@ const pool = new Pool({
     : false,
   max: process.env.VERCEL ? 3 : 10,
   idleTimeoutMillis: process.env.VERCEL ? 10_000 : 30_000,
-  connectionTimeoutMillis: 20_000,
+  connectionTimeoutMillis: process.env.VERCEL ? 8_000 : 20_000,
 });
 
 pool.on('error', (err) => {

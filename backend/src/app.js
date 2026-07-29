@@ -130,8 +130,15 @@ export function createApp() {
 
   app.use(async (req, res, next) => {
     if (!req.path.startsWith('/api')) return next();
+    // Health must stay fast even if DB is slow
+    if (req.path === '/api/health' || req.path.startsWith('/api/health')) return next();
     try {
-      await ensureBootstrap();
+      await Promise.race([
+        ensureBootstrap(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('bootstrap timeout')), 12_000)
+        ),
+      ]);
     } catch (err) {
       console.warn('[bootstrap middleware]', err.message?.slice(0, 120));
     }
@@ -141,9 +148,14 @@ export function createApp() {
   app.get('/api/health', async (_req, res) => {
     let bootstrap = null;
     try {
-      bootstrap = await ensureBootstrap();
+      bootstrap = await Promise.race([
+        ensureBootstrap(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('bootstrap timeout')), 8_000)
+        ),
+      ]);
     } catch (err) {
-      bootstrap = { ok: false };
+      bootstrap = { ok: false, error: 'unavailable' };
       logServerError('[health/bootstrap]', err);
     }
     res.json({
