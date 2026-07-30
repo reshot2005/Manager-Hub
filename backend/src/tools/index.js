@@ -219,18 +219,35 @@ export const toolDeclarations = [
   {
     name: 'getAttendanceComparison',
     description:
-      "Compare team attendance across two periods (default this_week vs last_week, Mon–Sun IST). Returns counts, attendance %, absent %, synced day coverage, and deltas. Use for 'compare this week vs last week', 'attendance percentage this week', weekly trends.",
+      "Compare team attendance across two periods. Prefer currentStart/currentEnd/previousStart/previousEnd (YYYY-MM-DD), or periodA/periodB = this_week|last_week. NEVER use getAttendanceToday for week compares.",
     parameters: {
       type: 'OBJECT',
       properties: {
+        currentStart: { type: 'STRING', description: 'YYYY-MM-DD' },
+        currentEnd: { type: 'STRING', description: 'YYYY-MM-DD' },
+        previousStart: { type: 'STRING', description: 'YYYY-MM-DD' },
+        previousEnd: { type: 'STRING', description: 'YYYY-MM-DD' },
         periodA: {
           type: 'STRING',
           description: 'this_week | last_week | YYYY-MM-DD:YYYY-MM-DD',
         },
         periodB: {
           type: 'STRING',
-          description: 'this_week | last_week | YYYY-MM-DD:YYYY-MM-DD (omit for single-period stats)',
+          description: 'this_week | last_week | YYYY-MM-DD:YYYY-MM-DD',
         },
+      },
+    },
+  },
+  {
+    name: 'getAttendancePercentage',
+    description:
+      "Team attendance % for a date range (IST). Returns attendance_pct, present_days, absent_days, excused_days (On Leave), late_days, total_synced_days. Unsynced days excluded.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        startDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        endDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        range: { type: 'STRING', description: 'this_week | last_week' },
       },
     },
   },
@@ -252,7 +269,7 @@ export const toolDeclarations = [
   {
     name: 'getAbsentees',
     description:
-      "List employees marked Absent. Use date=YYYY-MM-DD for one day; range=this_week or last_week (Mon–Sun IST) for weekly absentees; or startDate+endDate. Never use getAttendanceToday for weekly absent lists.",
+      "List employees marked Absent. Use date=YYYY-MM-DD; range=this_week|last_week; or startDate+endDate. Never use getAttendanceToday for weekly lists.",
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -264,6 +281,20 @@ export const toolDeclarations = [
         week: { type: 'STRING', description: 'true = this_week (alias)' },
         startDate: { type: 'STRING' },
         endDate: { type: 'STRING' },
+      },
+    },
+  },
+  {
+    name: 'getAbsenteesList',
+    description:
+      "Full absent-employee list + dates in a range with total_count. Prefer for 'who was absent this week'. Same backend as getAbsentees.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        startDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        endDate: { type: 'STRING', description: 'YYYY-MM-DD' },
+        range: { type: 'STRING', description: 'this_week | last_week' },
+        date: { type: 'STRING', description: 'Single day YYYY-MM-DD' },
       },
     },
   },
@@ -326,14 +357,14 @@ export const toolDeclarations = [
 const ALIASES = {
   get_employee_status: 'getEmployeeStatus',
   get_pending_tasks: 'getPendingTasks',
+  getTeamPendingTasks: 'getPendingTasks',
+  get_team_pending_tasks: 'getPendingTasks',
   get_missing_eods: 'getMissingEODs',
   get_leave_status: 'getLeaveStatus',
   get_team_on_leave: 'getTeamOnLeave',
   get_risk_report: 'getRiskReport',
   get_team_risk_summary: 'getTeamRiskSummary',
   get_active_alerts: 'getActiveAlerts',
-  get_team_pending_tasks: 'getPendingTasks',
-  getTeamPendingTasks: 'getPendingTasks',
   get_latest_eod: 'getLatestEod',
   get_team_summary: 'getTeamSummary',
   get_team_work_board: 'getTeamWorkBoard',
@@ -344,8 +375,10 @@ const ALIASES = {
   get_attendance_today: 'getAttendanceToday',
   get_attendance_comparison: 'getAttendanceComparison',
   getAttendanceWeekCompare: 'getAttendanceComparison',
+  get_attendance_percentage: 'getAttendancePercentage',
   get_employee_attendance: 'getEmployeeAttendance',
   get_absentees: 'getAbsentees',
+  get_absentees_list: 'getAbsenteesList',
   get_login_timing: 'getLoginTiming',
   get_performance_report: 'getPerformanceReport',
   get_worked_days_summary: 'getWorkedDaysSummary',
@@ -417,10 +450,14 @@ export async function executeTool(name, args, manager) {
       case 'getAttendanceComparison':
         result = await getAttendanceComparison(a, scope);
         break;
+      case 'getAttendancePercentage':
+        result = await getAttendancePercentage(a, scope);
+        break;
       case 'getEmployeeAttendance':
         result = await getEmployeeAttendance(a, scope);
         break;
       case 'getAbsentees':
+      case 'getAbsenteesList':
         result = await getAbsentees(a, scope);
         break;
       case 'getLoginTiming':
@@ -1308,13 +1345,33 @@ async function summarizeAttendanceRange(scope, start, end, label) {
 
 async function getAttendanceComparison(args, scope) {
   const today = await todayIst();
-  const periodA = await resolvePeriodBounds(args?.periodA || 'this_week', today);
-  const wantsB = args?.periodB != null && String(args.periodB).trim() !== '';
-  const periodB = wantsB
-    ? await resolvePeriodBounds(args.periodB || 'last_week', today)
-    : args?.periodA
-      ? null
-      : await resolvePeriodBounds('last_week', today);
+
+  // Prefer explicit IST dates from the model (current*/previous*) when provided.
+  const hasExplicit =
+    args?.currentStart && args?.currentEnd && args?.previousStart && args?.previousEnd;
+
+  let periodA;
+  let periodB;
+  if (hasExplicit) {
+    periodA = {
+      start: args.currentStart,
+      end: args.currentEnd,
+      label: `${args.currentStart}_to_${args.currentEnd}`,
+    };
+    periodB = {
+      start: args.previousStart,
+      end: args.previousEnd,
+      label: `${args.previousStart}_to_${args.previousEnd}`,
+    };
+  } else {
+    periodA = await resolvePeriodBounds(args?.periodA || 'this_week', today);
+    const wantsB = args?.periodB != null && String(args.periodB).trim() !== '';
+    periodB = wantsB
+      ? await resolvePeriodBounds(args.periodB || 'last_week', today)
+      : args?.periodA
+        ? null
+        : await resolvePeriodBounds('last_week', today);
+  }
 
   const a = await summarizeAttendanceRange(scope, periodA.start, periodA.end, periodA.label);
   const b = periodB
@@ -1337,9 +1394,59 @@ async function getAttendanceComparison(args, scope) {
     today_ist: today,
     period_a: a,
     period_b: b,
+    current: a,
+    previous: b,
     delta,
     formula:
       'attendance_pct = (Present + Late + Half Day) / synced attendance_days rows × 100. Unsynced days are excluded, not treated as absent.',
+  };
+}
+
+/** Team attendance % for one date range (prompt tool getAttendancePercentage). */
+async function getAttendancePercentage(args, scope) {
+  const today = await todayIst();
+  const rangeRaw = String(args?.range || '').toLowerCase();
+  let start = args?.startDate;
+  let end = args?.endDate;
+  let label = 'custom';
+
+  if (rangeRaw === 'this_week' || rangeRaw === 'last_week') {
+    const bounds = await resolveWeekBounds(today, rangeRaw);
+    start = bounds.start;
+    end = bounds.end;
+    label = bounds.label;
+  } else if (!start || !end) {
+    const bounds = await resolveWeekBounds(today, 'this_week');
+    start = start || bounds.start;
+    end = end || bounds.end;
+    label = 'this_week';
+  } else {
+    label = `${start}_to_${end}`;
+  }
+
+  const summary = await summarizeAttendanceRange(scope, start, end, label);
+  const present_days = (summary.present || 0) + (summary.late || 0) + (summary.half_day || 0);
+
+  return {
+    timezone: 'Asia/Kolkata',
+    today_ist: today,
+    start_date: start,
+    end_date: end,
+    range: label,
+    attendance_pct: summary.attendance_pct,
+    present_days,
+    absent_days: summary.absent || 0,
+    excused_days: summary.on_leave || 0,
+    late_days: summary.late || 0,
+    half_day_days: summary.half_day || 0,
+    holiday_days: summary.holiday || 0,
+    total_synced_days: summary.synced_days || 0,
+    synced_rows: summary.synced_rows || 0,
+    team_size: summary.employees_with_data || 0,
+    by_day: summary.by_day,
+    note: summary.note,
+    formula:
+      'attendance_pct = (Present + Late + Half Day) / synced attendance_days rows × 100. On Leave = excused_days. Unsynced days excluded.',
   };
 }
 
