@@ -362,7 +362,7 @@ export const PromptInputBox = forwardRef(function PromptInputBox(props, ref) {
   const {
     onSend = () => {},
     isLoading = false,
-    placeholder = 'Ask Manager AI anything about your team…',
+    placeholder = 'Ask Hub AI anything about your team…',
     className,
   } = props;
 

@@ -6,6 +6,21 @@
   color-scheme: light;
 }
 
+/* Dark login shell — scoped so the rest of the app stays light/teal */
+.login-1-theme {
+  --color-bg: #101214;
+  --color-surface: #161a1d;
+  --color-muted-surface: #1d2125;
+  --color-border: #2c333a;
+  --color-text-secondary: #596773;
+  --color-text-primary: #c7d1db;
+  --color-heading: #dee4ea;
+  --color-bg-2: #c7d1db;
+  --color-accent: #0f766e;
+  --color-text-primary-rgb: 199, 209, 219;
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }

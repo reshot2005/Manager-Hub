@@ -266,11 +266,11 @@ export default function ChatPage() {
       {error && <p className="mb-2 text-center text-xs text-red-500">{error}</p>}
       <PromptInputBox
         isLoading={busy}
-        placeholder="Ask Manager AI anything about your team…"
+        placeholder="Ask Hub AI anything about your team…"
         onSend={(message) => send(message)}
       />
       <p className="mt-2 text-center text-[11px] text-[#9ca3af]">
-        Manager AI uses live hub data · answers in a full Gemini-style briefing
+        Hub AI uses live hub data · accuracy first · tools only
       </p>
     </div>
   );
@@ -332,7 +332,7 @@ export default function ChatPage() {
             </button>
             <div className="flex items-center gap-2 text-sm font-medium text-[#202124]">
               <img src="/ai-orb.png" alt="" className="h-7 w-7 rounded-full" />
-              Manager AI
+              Hub AI
             </div>
             <div className="w-[96px]" />
           </header>
@@ -356,7 +356,7 @@ export default function ChatPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-[13px] font-semibold text-[#202124]">Manager AI</span>
+                          <span className="text-[13px] font-semibold text-[#202124]">Hub AI</span>
                           <CopyButton text={m.content} />
                         </div>
                         <div className="gemini-reply text-[15px] leading-[1.7] text-[#3c4043]">
@@ -384,7 +384,7 @@ export default function ChatPage() {
                 <div className="flex gap-3">
                   <img src="/ai-orb.png" alt="" className="mt-1 h-8 w-8 rounded-full" />
                   <div>
-                    <div className="mb-1 text-[13px] font-semibold text-[#202124]">Manager AI</div>
+                    <div className="mb-1 text-[13px] font-semibold text-[#202124]">Hub AI</div>
                     <div className="flex items-center gap-1.5 text-sm text-[#5f6368]">
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#0F766E]" />
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#0F766E] [animation-delay:150ms]" />

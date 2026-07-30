@@ -1,6 +1,6 @@
 /**
  * Deterministic hub answers when Gemini is slow/down.
- * Keeps Manager AI useful for the most common attendance questions.
+ * Keeps Hub AI useful for the most common attendance questions — tools only, no invention.
  */
 import { executeTool } from '../tools/index.js';
 
@@ -29,6 +29,37 @@ function listNames(rows, key = 'name') {
     .map((r) => `**${r[key] || r.name}**`)
     .slice(0, 40)
     .join(', ');
+}
+
+function formatTimeIst(value) {
+  if (!value) return null;
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatLateLine(r) {
+  const name = r.name || 'Unknown';
+  const firstIn = formatTimeIst(r.first_in);
+  const lateMins = r.late_minutes != null ? Number(r.late_minutes) : null;
+  const lateAfter = r.late_after || r.shift_start || '09:30';
+  const parts = [`**${name}**`];
+  if (firstIn) parts.push(`in ${firstIn}`);
+  if (lateMins != null && !Number.isNaN(lateMins)) {
+    parts.push(`${lateMins} min late (after ${lateAfter})`);
+  } else if (firstIn) {
+    parts.push(`after ${lateAfter}`);
+  }
+  return parts.join(' — ');
 }
 
 /**
@@ -60,20 +91,20 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const absent = data?.absent_count ?? data?.absentees?.length ?? data?.attendance?.absent?.length ?? '?';
       const absentees = data?.absentees || data?.attendance?.absent || [];
       const lateList = data?.late || data?.attendance?.late || [];
+      const lateDetail =
+        lateList.length > 0
+          ? lateList
+              .slice(0, 20)
+              .map((r) => `- ${formatLateLine(r)}`)
+              .join('\n')
+          : '- none';
       const reply =
-        `## Quick take\n` +
-        `Team pulse for **${data?.date || todayIst}** (IST).\n\n` +
-        `## Attendance\n` +
-        `- Present **${present}** · Late **${late}** · Absent **${absent}**\n` +
-        `- Absentees: ${listNames(absentees)}\n` +
-        `- Late arrivals: ${listNames(lateList)}\n\n` +
-        `## Work & hiring\n` +
-        `- Missing EODs: ${listNames(data?.missing_eods || data?.missingEods || [])}\n` +
-        `- Overdue tasks: **${data?.overdue_count ?? data?.overdueTasks?.length ?? 0}**\n` +
-        `- Interviews today: **${data?.interview_count ?? data?.interviews?.length ?? 0}**\n\n` +
-        `## What you can do next\n` +
-        `- Ask me to zoom into any name above\n` +
-        `- Ask “who was absent yesterday?” for yesterday’s roll-call`;
+        `**${absent}** absent · **${late}** late · **${present}** present on **${data?.date || todayIst}** (IST).\n\n` +
+        `**Absentees:** ${listNames(absentees)}\n` +
+        `**Late:**\n${lateDetail}\n\n` +
+        `Missing EODs: ${listNames(data?.missing_eods || data?.missingEods || [])}\n` +
+        `Overdue tasks: **${data?.overdue_count ?? data?.overdueTasks?.length ?? 0}** · Interviews today: **${data?.interview_count ?? data?.interviews?.length ?? 0}**\n\n` +
+        `Want names expanded or yesterday’s absentees?`;
       return { handled: true, reply, toolsUsed };
     }
 
@@ -82,20 +113,11 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `## Quick take\n` +
-            `Nobody was marked **Absent** on **${yesterdayIst}** (IST) in the hub.\n\n` +
-            `## Details\n` +
-            `I checked attendance days for yesterday. If that feels incomplete, sync may still be catching up.\n\n` +
-            `## What you can do next\n` +
-            `- Ask for **today’s** present / late / absent\n` +
-            `- Open **Data Sync** and run Attendance sync`
-          : `## Quick take\n` +
-            `**${rows.length}** people were absent on **${yesterdayIst}** (IST).\n\n` +
-            `## Absentees\n` +
-            rows.map((r) => `- **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n') +
-            `\n\n## What you can do next\n` +
-            `- Ask for today’s attendance roll-call\n` +
-            `- Ask for full status on any name above`;
+          ? `**0** people marked **Absent** on **${yesterdayIst}** (IST).\n\n` +
+            `If that feels incomplete, hub sync may still be catching up — that is not the same as inventing absentees.\n\n` +
+            `Ask for today’s roll-call, or sync Attendance in Data Sync.`
+          : `**${rows.length}** people were absent on **${yesterdayIst}** (IST):\n` +
+            rows.map((r) => `- **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
@@ -105,38 +127,36 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `## Quick take\n` +
-            `No absentees on **${date}** (IST).\n\n` +
-            `## Details\n` +
-            `Everyone looks present or not marked Absent in the hub for this date.\n\n` +
-            `## What you can do next\n` +
-            `- Ask for late arrivals vs shift\n` +
-            `- Ask for yesterday’s absentees`
-          : `## Quick take\n` +
-            `**${rows.length}** absent on **${date}** (IST).\n\n` +
-            `## Absentees\n` +
-            rows.map((r) => `- **${r.name}**`).join('\n') +
-            `\n\n## What you can do next\n` +
-            `- Ask for late arrivals vs each person’s shift\n` +
-            `- Ask for a full status on any name`;
+          ? `**0** absentees on **${date}** (IST).\n\n` +
+            `Ask for late arrivals (with check-in times), or yesterday’s absentees.`
+          : `**${rows.length}** absent on **${date}** (IST):\n` +
+            rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
     if (/\bpresent\b/.test(q) || /\blate\b/.test(q) || /\battendance\b/.test(q) || /\broll\b/.test(q)) {
       const data = await executeTool('getAttendanceToday', {}, manager);
+      if (data?.note && !(data.present?.length || data.late?.length || data.absent?.length)) {
+        return {
+          handled: true,
+          reply:
+            `No attendance data synced for **${data?.date || todayIst}** (IST) yet.\n\n` +
+            `That is not the same as everyone being absent — sync Attendance and ask again.`,
+          toolsUsed: ['getAttendanceToday'],
+        };
+      }
       const present = data?.present || [];
       const late = data?.late || [];
       const absent = data?.absent || [];
+      const lateLines =
+        late.length > 0
+          ? late.map((r) => `- ${formatLateLine(r)}`).join('\n')
+          : '- none';
       const reply =
-        `## Quick take\n` +
-        `Attendance for **${data?.date || todayIst}** (IST).\n\n` +
-        `## Headcount\n` +
-        `- **Present (${present.length}):** ${listNames(present)}\n` +
-        `- **Late (${late.length}):** ${listNames(late)}\n` +
-        `- **Absent (${absent.length}):** ${listNames(absent)}\n\n` +
-        `## What you can do next\n` +
-        `- Ask me to break down late minutes vs each person’s shift\n` +
-        `- Ask for absentees yesterday`;
+        `**${absent.length}** absent · **${late.length}** late · **${present.length}** present on **${data?.date || todayIst}** (IST).\n\n` +
+        `**Late:**\n${lateLines}\n\n` +
+        `**Absent:** ${listNames(absent)}\n\n` +
+        `Want full present list or yesterday’s absentees?`;
       return { handled: true, reply, toolsUsed: ['getAttendanceToday'] };
     }
   } catch (err) {
