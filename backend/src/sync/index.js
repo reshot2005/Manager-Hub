@@ -7,6 +7,7 @@ import { syncAtsFromDb } from './atsDb.js';
 import { syncAttendanceFromDb } from './attendanceDb.js';
 import { ensureAdminTeamCoverage } from '../services/scope.js';
 import { ensureBootstrap, linkAdminAcl } from '../services/bootstrap.js';
+import { runIntelligenceJobs } from './intelligence.js';
 
 let running = false;
 
@@ -116,6 +117,14 @@ export async function runFullSync({ sources = ['sprintboard', 'ats', 'attendance
       console.warn('[sync] ACL coverage:', err.message);
     }
 
+    try {
+      stats.intelligence = await runIntelligenceJobs({ force: false });
+      console.log('[sync] Intelligence', stats.intelligence);
+    } catch (err) {
+      console.warn('[sync] intelligence:', err.message);
+      stats.intelligence = { error: err.message };
+    }
+
     const ok = errors.length === 0;
     await query(
       `UPDATE sync_runs SET status = $2, finished_at = NOW(), stats = $3, error_message = $4 WHERE id = $1`,
@@ -155,5 +164,16 @@ export function startSyncCron() {
       else console.log('[sync] cron OK — hub DATABASE_URL updated from sources');
     });
   });
-  console.log(`[sync] Continuous sync: ${expr} → Sprintboard/ATS/Attendance → hub Neon`);
+  console.log(`[sync] Continuous sync: ${expr} → Sprintboard/ATS/Attendance → hub`);
+
+  // Daily intelligence (leave overlay already runs after attendance; risk+alerts once/day)
+  const intelExpr = process.env.INTEL_CRON || '15 2 * * *';
+  if (intelExpr !== 'off' && cron.validate(intelExpr)) {
+    cron.schedule(intelExpr, () => {
+      runIntelligenceJobs({ force: true })
+        .then((s) => console.log('[intel] daily OK', s))
+        .catch((err) => console.error('[intel] daily failed:', err.message));
+    });
+    console.log(`[intel] Daily risk/alerts cron: ${intelExpr}`);
+  }
 }

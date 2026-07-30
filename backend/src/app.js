@@ -68,6 +68,20 @@ async function handleCronBackup(req, res) {
   }
 }
 
+async function handleCronIntel(req, res) {
+  try {
+    if (!(await assertCronAuthorized(req, res))) return;
+    await ensureBootstrap({ light: false });
+    const { runIntelligenceJobs } = await import('./sync/intelligence.js');
+    const force = req.query?.force === '1' || req.body?.force === true;
+    const result = await runIntelligenceJobs({ force });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logServerError('[intel/cron]', err);
+    res.status(500).json({ message: safeClientError(err, 'Intelligence cron failed') });
+  }
+}
+
 function pickRotatingSource() {
   const sources = ['attendance', 'sprintboard', 'ats'];
   const minutes = Number(process.env.SYNC_ROTATE_MINUTES || 5);
@@ -150,6 +164,8 @@ export function createApp() {
   app.get('/api/sync/cron', handleCronSync);
   app.post('/api/backup/cron', handleCronBackup);
   app.get('/api/backup/cron', handleCronBackup);
+  app.post('/api/intel/cron', handleCronIntel);
+  app.get('/api/intel/cron', handleCronIntel);
 
   // Import routers (sync/backup stay lazy above to keep cold start smaller)
   // Auth is also handled in api/index.js on Vercel to avoid Express hang on login.
@@ -168,6 +184,7 @@ export function createApp() {
       req.path.startsWith('/chat') ||
       req.path.startsWith('/sync/cron') ||
       req.path.startsWith('/backup/cron') ||
+      req.path.startsWith('/intel/cron') ||
       req.path.startsWith('/health')
     ) {
       return next();

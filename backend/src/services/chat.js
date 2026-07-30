@@ -60,17 +60,49 @@ function yesterdayIst(todayIst) {
   return `${y}-${m}-${day}`;
 }
 
+/** After a model hits quota, prefer others for this long (ms). */
+const MODEL_COOLDOWN_MS = Number(process.env.GEMINI_MODEL_COOLDOWN_MS || 5 * 60 * 1000);
+/** modelName -> epoch ms when cooldown ends */
+const modelCooldownUntil = new Map();
+
+function markModelExhausted(modelName) {
+  modelCooldownUntil.set(modelName, Date.now() + MODEL_COOLDOWN_MS);
+}
+
+/**
+ * Free-tier rotation list.
+ * GEMINI_MODELS=comma-separated overrides the built-in free defaults.
+ * GEMINI_MODEL (if set) is tried first.
+ */
 function modelCandidates() {
-  const preferred = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  // Prefer flash models with higher free-tier headroom; avoid cascading 429s.
-  return [
-    ...new Set([
-      preferred,
-      'gemini-2.5-flash',
-      'gemini-flash-latest',
-      'gemini-2.0-flash',
-    ]),
+  const preferred = (process.env.GEMINI_MODEL || '').trim();
+  const fromEnv = (process.env.GEMINI_MODELS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Flash / Flash-Lite family — separate free-tier RPM/RPD buckets when possible.
+  const freeDefaults = [
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-2.0-flash-lite',
   ];
+
+  const ordered = [
+    ...new Set([...(preferred ? [preferred] : []), ...fromEnv, ...freeDefaults]),
+  ];
+
+  const now = Date.now();
+  const ready = [];
+  const cooling = [];
+  for (const name of ordered) {
+    if ((modelCooldownUntil.get(name) || 0) > now) cooling.push(name);
+    else ready.push(name);
+  }
+  // Ready models first; recently exhausted last (in case quota recovered).
+  return [...ready, ...cooling];
 }
 
 function isQuotaError(err) {
@@ -80,6 +112,8 @@ function isQuotaError(err) {
     /\b429\b/.test(msg) ||
     /Too Many Requests/i.test(msg) ||
     /exceeded your current quota/i.test(msg) ||
+    /RESOURCE_EXHAUSTED/i.test(msg) ||
+    /quota.?exceeded/i.test(msg) ||
     /rate[_ ]?limit/i.test(msg)
   );
 }
@@ -188,8 +222,13 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
   });
 
   let lastErr = null;
-  for (const modelName of modelCandidates()) {
+  const tried = [];
+  const candidates = modelCandidates();
+  console.info('[chat] model queue', candidates.join(' → '));
+
+  for (const modelName of candidates) {
     if (remaining() < 5_000) break;
+    tried.push(modelName);
     try {
       const model = getModel(modelName);
       const chat = model.startChat({
@@ -252,21 +291,35 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
       if (!text || !String(text).trim()) {
         text = friendlyFromTools(toolTrace, userMessage);
       }
+      if (tried.length > 1) {
+        console.info('[chat] answered with fallback model', modelName, 'after', tried.slice(0, -1).join(', '));
+      }
       return { reply: text, toolsUsed: toolTrace.map((t) => t.name), toolTrace, modelName };
     } catch (err) {
       lastErr = err;
-      console.warn('[chat] model fail', modelName, String(err.message || err).slice(0, 200));
-      // Quota: stop immediately — retrying other models burns the same free-tier budget.
-      if (isQuotaError(err)) break;
-      // Only rotate models when this one is missing / unsupported.
-      if (!isModelMissingError(err) && !/_timeout$/i.test(String(err.message || ''))) {
-        // Transient network / 5xx — try next once; otherwise continue.
+      const msg = String(err.message || err).slice(0, 200);
+      console.warn('[chat] model fail', modelName, msg);
+
+      if (isQuotaError(err)) {
+        markModelExhausted(modelName);
+        console.warn('[chat] quota on', modelName, '— switching to next free model');
         continue;
       }
+      // Missing model / timeout / transient — try next in the free rotation.
+      if (
+        isModelMissingError(err) ||
+        /_timeout$/i.test(String(err.message || '')) ||
+        err?.status >= 500
+      ) {
+        continue;
+      }
+      // Other client errors: still try next model (keep chat available).
+      continue;
     }
   }
 
-  throw lastErr || new Error('All Gemini models failed');
+  const detail = tried.length ? ` (tried: ${tried.join(', ')})` : '';
+  throw lastErr || new Error(`All Gemini models failed${detail}`);
 }
 
 /**
@@ -276,19 +329,51 @@ export async function chatWithGemini(manager, userMessage) {
   const { todayIst, nowIst } = nowInIst();
   const yIst = yesterdayIst(todayIst);
 
-  // 1) Always answer common attendance/ops questions from Neon (no Gemini dependency)
+  const wantsPulse =
+    /\b(how('s| is)? my team|team pulse|daily briefing|standup|what should i know|any alerts?)\b/i.test(
+      userMessage || ''
+    );
+
+  let alertPrefix = '';
+  let alertTools = [];
+  if (wantsPulse) {
+    try {
+      const alerts = await executeTool('getActiveAlerts', {}, manager);
+      alertTools = ['getActiveAlerts'];
+      if (alerts?.total_count > 0) {
+        const lines = (alerts.alerts || [])
+          .slice(0, 15)
+          .map(
+            (a) =>
+              `• **${a.severity}** — ${a.message}${a.employee_name ? ` (${a.employee_name})` : ''}`
+          );
+        alertPrefix =
+          `**Unacknowledged alerts (${alerts.total_count}):**\n${lines.join('\n')}\n\n`;
+      } else {
+        alertPrefix = `**Alerts:** none unacknowledged.\n\n`;
+      }
+    } catch (err) {
+      console.warn('[chat] alerts prefix', err.message?.slice(0, 120));
+    }
+  }
+
+  // 1) Always answer common attendance/ops questions from hub (no Gemini dependency)
   const fast = await tryHubFastAnswer(manager, userMessage);
   if (fast.handled) {
-    const toolTrace = (fast.toolsUsed || []).map((name) => ({ name, argKeys: [] }));
-    await persistTurn(manager.id, userMessage, fast.reply, toolTrace);
-    return { reply: fast.reply, toolsUsed: fast.toolsUsed || [], toolTrace };
+    const reply = alertPrefix ? `${alertPrefix}${fast.reply}` : fast.reply;
+    const toolsUsed = [...alertTools, ...(fast.toolsUsed || [])];
+    const toolTrace = toolsUsed.map((name) => ({ name, argKeys: [] }));
+    await persistTurn(manager.id, userMessage, reply, toolTrace);
+    return { reply, toolsUsed, toolTrace };
   }
 
   // 2) Full Gemini + tools for everything else
   try {
     const result = await runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst });
-    await persistTurn(manager.id, userMessage, result.reply, result.toolTrace);
-    return result;
+    const reply = alertPrefix ? `${alertPrefix}${result.reply}` : result.reply;
+    const toolsUsed = [...alertTools, ...(result.toolsUsed || [])];
+    await persistTurn(manager.id, userMessage, reply, result.toolTrace);
+    return { ...result, reply, toolsUsed };
   } catch (err) {
     // 3) Last resort: try hub patterns again / friendly recovery
     const fallback = await tryHubFastAnswer(manager, userMessage);
@@ -300,7 +385,7 @@ export async function chatWithGemini(manager, userMessage) {
 
     const quota = isQuotaError(err);
     const text = quota
-      ? `Gemini API quota is exhausted right now (rate limit / free-tier cap).\n\n` +
+      ? `All configured Gemini free models are exhausted right now (rate limit / daily cap).\n\n` +
         `I can still answer directly from the hub — try:\n` +
         `• **who was absent yesterday**\n` +
         `• **present / late today**\n` +

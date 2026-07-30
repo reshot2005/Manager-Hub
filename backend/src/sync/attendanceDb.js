@@ -5,6 +5,7 @@ import {
   evaluateLogin,
   resolveShift,
 } from '../utils/shifts.js';
+import { applyApprovedLeaveToAttendance } from './leaveAttendance.js';
 
 /**
  * Attendance Tracker Neon → hub.
@@ -378,6 +379,7 @@ export async function syncAttendanceFromDb() {
     [sinceTs]
   );
 
+  await applyApprovedLeaveToAttendance(days);
   await recomputePerformance(days);
 
   await query(`

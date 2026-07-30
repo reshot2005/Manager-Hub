@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
@@ -16,8 +16,11 @@ import {
   LogOut,
   X,
   Fingerprint,
+  CalendarOff,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import { Dock, DockIcon, DockItem, DockLabel } from '@/components/ui/dock';
 
 gsap.registerPlugin(useGSAP);
@@ -27,6 +30,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', icon: BarChart2, label: 'Dashboard', color: '#0D9488' },
   { to: '/employees', icon: Users, label: 'Employees', color: '#14B8A6' },
   { to: '/attendance', icon: Fingerprint, label: 'Attendance', color: '#0F766E' },
+  { to: '/leave', icon: CalendarOff, label: 'Leave', color: '#7C3AED' },
   { to: '/eod', icon: FileText, label: 'EOD Reports', color: '#0D9488' },
   { to: '/tasks', icon: CheckSquare, label: 'Tasks', color: '#115E59' },
   { to: '/candidates', icon: UserRoundSearch, label: 'Candidates', color: '#14B8A6' },
@@ -86,6 +90,29 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api('/alerts')
+      .then((res) => {
+        if (!cancelled) setAlerts(res.alerts || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname]);
+
+  async function ackAlert(id) {
+    try {
+      await api(`/alerts/${id}/ack`, { method: 'POST' });
+      setAlerts((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      /* ignore */
+    }
+  }
 
   if (loading) {
     return (
@@ -161,6 +188,19 @@ export default function AppLayout() {
         <div className="pointer-events-auto flex flex-col items-center gap-3 pt-2">
           <button
             type="button"
+            title="Alerts"
+            onClick={() => setAlertsOpen(true)}
+            className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white/60 text-[#94a3b8] backdrop-blur-sm transition hover:bg-white hover:text-[#0F766E]"
+          >
+            <Bell size={16} strokeWidth={1.85} />
+            {alerts.length > 0 ? (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                {alerts.length > 9 ? '9+' : alerts.length}
+              </span>
+            ) : null}
+          </button>
+          <button
+            type="button"
             title="Settings"
             onClick={() => setSettingsOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/60 text-[#94a3b8] backdrop-blur-sm transition hover:bg-white hover:text-[#0F766E]"
@@ -182,6 +222,49 @@ export default function AppLayout() {
       {settingsOpen && (
         <SettingsModal user={user} onClose={() => setSettingsOpen(false)} onLogout={logout} />
       )}
+      {alertsOpen && (
+        <AlertsPanel
+          alerts={alerts}
+          onAck={ackAlert}
+          onClose={() => setAlertsOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AlertsPanel({ alerts, onAck, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="max-h-[80vh] w-full max-w-md overflow-auto rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-[#1F2023]">Alerts</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-[#9ca3af] hover:bg-[#F0FDFA]">
+            <X size={18} />
+          </button>
+        </div>
+        {alerts.length === 0 ? (
+          <p className="text-sm text-slate-500">No unacknowledged alerts.</p>
+        ) : (
+          <ul className="space-y-3">
+            {alerts.map((a) => (
+              <li key={a.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                <p className="font-semibold text-slate-800">
+                  {a.severity} · {a.alert_type}
+                </p>
+                <p className="mt-1 text-slate-600">{a.message}</p>
+                <button
+                  type="button"
+                  onClick={() => onAck(a.id)}
+                  className="mt-2 text-xs font-medium text-teal-800 hover:underline"
+                >
+                  Acknowledge
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

@@ -66,6 +66,11 @@ export async function ensureBootstrap({ light = Boolean(process.env.VERCEL) } = 
       } catch (err) {
         console.warn('[bootstrap] shifts:', err.message?.slice(0, 120));
       }
+      try {
+        await runSqlFile('migrate_leave_risk_alerts.sql');
+      } catch (err) {
+        console.warn('[bootstrap] leave/risk/alerts:', err.message?.slice(0, 120));
+      }
     }
 
     const manager = await ensureManagerSeed();

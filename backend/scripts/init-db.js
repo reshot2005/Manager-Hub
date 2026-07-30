@@ -29,7 +29,13 @@ async function initDb() {
   } catch (err) {
     console.warn('Shifts migrate note:', err.message);
   }
-  console.log('Schema applied successfully (incl. ACL + attendance + shifts).');
+  try {
+    const leave = readFileSync(join(__dirname, '../src/db/migrate_leave_risk_alerts.sql'), 'utf8');
+    await query(leave);
+  } catch (err) {
+    console.warn('Leave/risk/alerts migrate note:', err.message);
+  }
+  console.log('Schema applied successfully (incl. ACL + attendance + shifts + leave/risk/alerts).');
   process.exit(0);
 }
 

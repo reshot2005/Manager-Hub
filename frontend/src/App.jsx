@@ -10,6 +10,7 @@ import TasksPage from './pages/TasksPage.jsx';
 import CandidatesPage from './pages/CandidatesPage.jsx';
 import InterviewsPage from './pages/InterviewsPage.jsx';
 import SyncPage from './pages/SyncPage.jsx';
+import LeavePage from './pages/LeavePage.jsx';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/attendance" element={<AttendancePage />} />
+        <Route path="/leave" element={<LeavePage />} />
         <Route path="/eod" element={<EodReportsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/candidates" element={<CandidatesPage />} />

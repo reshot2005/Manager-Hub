@@ -698,4 +698,214 @@ router.post('/sync/run', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/* ─── Leave management (in-app; no external leave sync yet) ─── */
+
+const LEAVE_TYPES = new Set(['Sick', 'Casual', 'WFH', 'Other']);
+const LEAVE_STATUSES = new Set(['Pending', 'Approved', 'Rejected']);
+
+router.get('/leave', requireAuth, async (req, res) => {
+  try {
+    const scope = await getManagerScope(req.manager);
+    const status = asString(req.query.status, { max: 20 });
+    const from = asDateYmd(req.query.from);
+    const to = asDateYmd(req.query.to);
+    const params = [];
+    const clauses = ['TRUE'];
+
+    if (!scope.unrestricted) {
+      if (!scope.employeeIds?.length) return res.json({ leaves: [] });
+      params.push(scope.employeeIds);
+      clauses.push(`lr.employee_id = ANY($${params.length}::uuid[])`);
+    }
+    if (status && LEAVE_STATUSES.has(status)) {
+      params.push(status);
+      clauses.push(`lr.status = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      clauses.push(`lr.end_date >= $${params.length}::date`);
+    }
+    if (to) {
+      params.push(to);
+      clauses.push(`lr.start_date <= $${params.length}::date`);
+    }
+
+    const { rows } = await query(
+      `SELECT lr.*, e.name AS employee_name, e.email AS employee_email,
+              m.name AS approved_by_name
+       FROM leave_requests lr
+       JOIN employees e ON e.id = lr.employee_id
+       LEFT JOIN managers m ON m.id = lr.approved_by
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY lr.requested_at DESC
+       LIMIT 200`,
+      params
+    );
+    res.json({ leaves: rows });
+  } catch (err) {
+    logServerError('[leave/list]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to load leave') });
+  }
+});
+
+router.post('/leave', requireAuth, async (req, res) => {
+  try {
+    const scope = await getManagerScope(req.manager);
+    const employeeId = asUuid(req.body?.employeeId || req.body?.employee_id);
+    const leaveType = asString(req.body?.leaveType || req.body?.leave_type, { max: 20 });
+    const startDate = asDateYmd(req.body?.startDate || req.body?.start_date);
+    const endDate = asDateYmd(req.body?.endDate || req.body?.end_date);
+    const notes = asString(req.body?.notes, { max: 2000 }) || null;
+    const autoApprove = Boolean(req.body?.approve);
+
+    if (!employeeId || !LEAVE_TYPES.has(leaveType) || !startDate || !endDate) {
+      return res.status(400).json({ message: 'employeeId, leaveType, startDate, endDate required' });
+    }
+    if (endDate < startDate) {
+      return res.status(400).json({ message: 'endDate must be >= startDate' });
+    }
+    if (!canAccessEmployee(scope, employeeId)) {
+      return res.status(403).json({ message: 'Employee not in your team' });
+    }
+
+    const status = autoApprove ? 'Approved' : 'Pending';
+    const { rows } = await query(
+      `INSERT INTO leave_requests
+         (employee_id, leave_type, start_date, end_date, status, approved_by, notes)
+       VALUES ($1,$2,$3::date,$4::date,$5,$6,$7)
+       RETURNING *`,
+      [
+        employeeId,
+        leaveType,
+        startDate,
+        endDate,
+        status,
+        autoApprove ? req.manager.id : null,
+        notes,
+      ]
+    );
+
+    if (autoApprove) {
+      const { applyApprovedLeaveToAttendance } = await import('../sync/leaveAttendance.js');
+      await applyApprovedLeaveToAttendance(120);
+    }
+
+    res.status(201).json({ leave: rows[0] });
+  } catch (err) {
+    logServerError('[leave/create]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to create leave') });
+  }
+});
+
+router.patch('/leave/:id/status', requireAuth, async (req, res) => {
+  try {
+    const scope = await getManagerScope(req.manager);
+    const id = asUuid(req.params.id);
+    const status = asString(req.body?.status, { max: 20 });
+    if (!id || !LEAVE_STATUSES.has(status) || status === 'Pending') {
+      return res.status(400).json({ message: 'Valid id and status Approved|Rejected required' });
+    }
+
+    const { rows: existing } = await query(`SELECT * FROM leave_requests WHERE id = $1`, [id]);
+    if (!existing.length) return res.status(404).json({ message: 'Leave not found' });
+    if (!canAccessEmployee(scope, existing[0].employee_id)) {
+      return res.status(403).json({ message: 'Employee not in your team' });
+    }
+
+    const { rows } = await query(
+      `UPDATE leave_requests
+       SET status = $2,
+           approved_by = $3,
+           notes = COALESCE($4, notes)
+       WHERE id = $1
+       RETURNING *`,
+      [id, status, req.manager.id, asString(req.body?.notes, { max: 2000 }) || null]
+    );
+
+    if (status === 'Approved') {
+      const { applyApprovedLeaveToAttendance } = await import('../sync/leaveAttendance.js');
+      await applyApprovedLeaveToAttendance(120);
+    }
+
+    res.json({ leave: rows[0] });
+  } catch (err) {
+    logServerError('[leave/status]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to update leave') });
+  }
+});
+
+/* ─── Alerts ─── */
+
+router.get('/alerts', requireAuth, async (req, res) => {
+  try {
+    const onlyOpen = String(req.query.open || '1') !== '0';
+    const params = [req.manager.id];
+    let clause = 'a.manager_id = $1';
+    if (onlyOpen) clause += ' AND a.acknowledged = FALSE';
+
+    const { rows } = await query(
+      `SELECT a.*, e.name AS employee_name
+       FROM alerts a
+       LEFT JOIN employees e ON e.id = a.employee_id
+       WHERE ${clause}
+       ORDER BY a.created_at DESC
+       LIMIT 100`,
+      params
+    );
+    res.json({
+      alerts: rows,
+      unacknowledged_count: rows.filter((r) => !r.acknowledged).length,
+    });
+  } catch (err) {
+    logServerError('[alerts/list]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to load alerts') });
+  }
+});
+
+router.post('/alerts/:id/ack', requireAuth, async (req, res) => {
+  try {
+    const id = asUuid(req.params.id);
+    if (!id) return res.status(400).json({ message: 'Invalid id' });
+    const { rows } = await query(
+      `UPDATE alerts
+       SET acknowledged = TRUE, acknowledged_at = NOW()
+       WHERE id = $1 AND manager_id = $2
+       RETURNING *`,
+      [id, req.manager.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Alert not found' });
+    res.json({ alert: rows[0] });
+  } catch (err) {
+    logServerError('[alerts/ack]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to acknowledge alert') });
+  }
+});
+
+router.get('/risk', requireAuth, async (req, res) => {
+  try {
+    const scope = await getManagerScope(req.manager);
+    const params = [];
+    let empFilter = 'TRUE';
+    if (!scope.unrestricted) {
+      if (!scope.employeeIds?.length) return res.json({ scores: [] });
+      params.push(scope.employeeIds);
+      empFilter = `r.employee_id = ANY($${params.length}::uuid[])`;
+    }
+    const { rows } = await query(
+      `SELECT DISTINCT ON (r.employee_id)
+         r.*, e.name AS employee_name
+       FROM employee_risk_scores r
+       JOIN employees e ON e.id = r.employee_id
+       WHERE ${empFilter}
+       ORDER BY r.employee_id, r.computed_date DESC`,
+      params
+    );
+    const sorted = rows.sort((a, b) => a.composite_score - b.composite_score);
+    res.json({ scores: sorted });
+  } catch (err) {
+    logServerError('[risk/list]', err);
+    res.status(500).json({ message: safeClientError(err, 'Failed to load risk scores') });
+  }
+});
+
 export default router;
