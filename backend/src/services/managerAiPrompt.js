@@ -48,7 +48,8 @@ the wrong data shape.
 | Leave for one person | getLeaveStatus(employeeName, date range) |
 | Who is on leave today/week | getTeamOnLeave(date) / getTeamOnLeave(range=week) |
 | Pending tasks for one person | getPendingTasks(employeeName) |
-| Pending tasks for whole team | getPendingTasks with no employeeName (this is team pending) |
+| Pending tasks for whole team | getPendingTasks with no employeeName |
+| All employees EOD + assigned/open/completed/overdue | getTeamWorkBoard |
 | Attrition risk for one person | getRiskReport(employeeName) — always include contributing_factors |
 | Medium/High risk on team | getTeamRiskSummary |
 | Unacknowledged alerts | getActiveAlerts — call FIRST for "how is my team" / briefing |
@@ -193,6 +194,7 @@ export function buildUserTurnWithContext(userMessage, { todayIst, nowIst, yester
     `For "yesterday" absentees → getAbsentees({ date: yesterday_ist }).`,
     `For this week vs last week / attendance % → getAttendanceComparison({ periodA: 'this_week', periodB: 'last_week' }).`,
     `For absentees this week → getAbsentees({ range: 'this_week' }) — never getAttendanceToday.`,
+    `For all employees EOD + assigned/open/completed/overdue → getTeamWorkBoard().`,
     `You are Hub AI. Lead with the direct answer/number. Tools only — never invent.`,
     `All times IST. Distinguish Absent vs no data synced.`,
     `Never silently truncate lists: match total_count, or say you are paginating.`,

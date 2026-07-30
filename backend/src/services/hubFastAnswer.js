@@ -130,6 +130,17 @@ export async function tryHubFastAnswer(manager, userMessage) {
     /\bdaily\s+report/.test(q) ||
     /\bmissing\s+eod/.test(q) ||
     /\bwho\b.*\bsubmit/.test(q);
+  const asksTeamWork =
+    /\b(all|every|everyone|entire)\s+(employee|team|staff)/.test(q) ||
+    /\bteam\s+work\b/.test(q) ||
+    /\bwork\s+board\b/.test(q) ||
+    (/\beod\b/.test(q) && /\b(all|everyone|team)\b/.test(q)) ||
+    (/\btasks?\b/.test(q) &&
+      /\b(assigned|completed|completion|open|done)\b/.test(q) &&
+      /\b(all|everyone|team|each)\b/.test(q)) ||
+    /\bassigned\s+vs\s+completed\b/.test(q) ||
+    /\bcompleted\s+tasks?\b/.test(q) ||
+    /\btask\s+status\s+(for\s+)?(all|everyone|team)\b/.test(q);
   const asksLogin =
     /\blogin\s+tim/.test(q) ||
     /\bcheck[- ]?in/.test(q) ||
@@ -355,9 +366,10 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const reply =
         focus.length === 0
           ? `**0** matching pending/overdue tasks in your team right now.`
-          : `**${focus.length}** task(s)${/\boverdue\b/.test(q) ? ' overdue' : ' pending'}:\n` +
+          : `**${focus.length}** task(s)${/\boverdue\b/.test(q) ? ' overdue' : ' pending'}` +
+            `${data?.total_count && data.total_count > focus.length ? ` (showing ${focus.length} of ${data.total_count})` : ''}:\n` +
             focus
-              .slice(0, 25)
+              .slice(0, 40)
               .map(
                 (t) =>
                   `- **${t.title || t.name}** · ${t.employee_name || t.assignee || '—'} · ${t.status || ''}${
@@ -366,6 +378,30 @@ export async function tryHubFastAnswer(manager, userMessage) {
               )
               .join('\n');
       return { handled: true, reply, toolsUsed: ['getPendingTasks'] };
+    }
+
+    if (asksTeamWork || (asksEod && /\b(all|everyone|team|list)\b/.test(q) && !extractEmployeeName(q))) {
+      const data = await executeTool('getTeamWorkBoard', {}, manager);
+      const emps = data?.employees || [];
+      const t = data?.totals || {};
+      if (!emps.length) {
+        return {
+          handled: true,
+          reply: data?.message || 'No employees in your team scope.',
+          toolsUsed: ['getTeamWorkBoard'],
+        };
+      }
+      const lines = emps.map(
+        (e) =>
+          `- **${e.name}** — EOD: **${e.eod_status}** · open **${e.open_tasks}** · completed **${e.completed_tasks}** · overdue **${e.overdue_tasks}** · assigned total **${e.assigned_tasks_total}**`
+      );
+      const reply =
+        `**Team work board** for **${data.date}** (IST) — **${t.employees}** employees:\n\n` +
+        `• EODs submitted **${t.eod_submitted}** · missing **${t.eod_missing}**\n` +
+        `• Open tasks **${t.open_tasks}** · completed **${t.completed_tasks}** · overdue **${t.overdue_tasks}**\n\n` +
+        lines.join('\n') +
+        `\n\n${emps.length} employees listed above, matching total_count **${data.total_count}**.`;
+      return { handled: true, reply, toolsUsed: ['getTeamWorkBoard'] };
     }
 
     if (asksEod && !extractEmployeeName(q)) {

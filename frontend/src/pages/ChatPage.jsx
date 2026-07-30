@@ -9,6 +9,11 @@ import {
   MessageSquare,
   Copy,
   Check,
+  CalendarRange,
+  ListChecks,
+  FileWarning,
+  Percent,
+  Users,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -17,13 +22,28 @@ import { PromptInputBox } from '@/components/ui/ai-prompt-box';
 
 const MAX_CHARS = 4000;
 
+/** Ready-to-send common questions (chips + empty-state cards) */
+const QUICK_CHIPS = [
+  { label: 'Daily briefing', prompt: "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews." },
+  { label: 'Who needs attention', prompt: 'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work?' },
+  { label: 'Present / absent / late', prompt: "Who is present, absent, or late today? Include late minutes vs each person's shift." },
+  { label: 'This week vs last week', prompt: 'Compare attendance this week vs last week with percentages and deltas.' },
+  { label: 'Attendance % this week', prompt: "What's the attendance percentage this week?" },
+  { label: 'Absentees this week', prompt: 'List all absentees this week with dates for each person.' },
+  { label: 'Missing EODs today', prompt: "Who hasn't submitted an EOD today? List everyone." },
+  { label: 'All EODs + tasks', prompt: 'Show all employees: EOD submitted or missing today, assigned tasks, open, completed, and overdue.' },
+  { label: 'Pending / overdue tasks', prompt: 'List all pending and overdue tasks for the whole team with employee names.' },
+  { label: 'Team risk summary', prompt: 'Show Medium and High attrition-risk employees with contributing factors.' },
+  { label: 'Active alerts', prompt: 'What unacknowledged alerts do I have for my team?' },
+  { label: 'On leave today', prompt: 'Who is on approved leave today?' },
+];
+
 const SUGGESTED_BENTO = [
   {
     id: 's1',
     name: "Today's daily briefing",
     description: 'Attendance, missing EODs, overdue tasks, and interviews — one morning snapshot.',
-    prompt:
-      "Give me today's daily briefing with attendance, missing EODs, overdue tasks, and interviews. Write a full, clear Gemini-style answer.",
+    prompt: QUICK_CHIPS[0].prompt,
     Icon: ClipboardList,
     cta: 'Ask now',
     className: 'lg:col-start-1 lg:col-end-2 lg:row-start-1 lg:row-end-3',
@@ -37,11 +57,10 @@ const SUGGESTED_BENTO = [
   },
   {
     id: 's2',
-    name: 'Who needs attention?',
-    description: 'Absentees, late vs shift, missing EODs, and overdue work that needs you.',
-    prompt:
-      'Who needs my attention right now — absentees, late vs shift, missing EODs, and overdue work? Explain clearly with names and next steps.',
-    Icon: AlertTriangle,
+    name: 'All EODs + tasks',
+    description: 'Every employee: EOD status, assigned, open, completed, overdue.',
+    prompt: QUICK_CHIPS[7].prompt,
+    Icon: Users,
     cta: 'Ask now',
     className: 'lg:col-start-2 lg:col-end-4 lg:row-start-1 lg:row-end-2',
     background: (
@@ -54,11 +73,10 @@ const SUGGESTED_BENTO = [
   },
   {
     id: 's3',
-    name: 'Present / absent / late',
-    description: "Live headcount with late minutes vs each person's shift.",
-    prompt:
-      "Who is present, absent, or late today? Include late minutes vs each person's shift and summarize in a readable report.",
-    Icon: UserCheck,
+    name: 'Week vs last week',
+    description: 'Attendance compare with percentages and deltas (Mon–Sun IST).',
+    prompt: QUICK_CHIPS[3].prompt,
+    Icon: CalendarRange,
     cta: 'Ask now',
     className: 'lg:col-start-2 lg:col-end-3 lg:row-start-2 lg:row-end-3',
     background: (
@@ -71,11 +89,10 @@ const SUGGESTED_BENTO = [
   },
   {
     id: 's4',
-    name: 'Full employee status',
-    description: 'Attendance, open tasks, EOD, and blockers for one person.',
-    prompt:
-      "Give me Jeevan's full status today — attendance, open tasks, EOD, and any blockers. Write it like a complete Gemini briefing.",
-    Icon: UserRoundSearch,
+    name: 'Missing EODs',
+    description: "Full list of who hasn't submitted today's EOD.",
+    prompt: QUICK_CHIPS[6].prompt,
+    Icon: FileWarning,
     cta: 'Ask now',
     className: 'lg:col-start-3 lg:col-end-4 lg:row-start-2 lg:row-end-3',
     background: (
@@ -88,6 +105,22 @@ const SUGGESTED_BENTO = [
   },
 ];
 
+function QuickChips({ onPick, className = '' }) {
+  return (
+    <div className={`flex flex-wrap justify-center gap-2 ${className}`}>
+      {QUICK_CHIPS.map((c) => (
+        <button
+          key={c.label}
+          type="button"
+          onClick={() => onPick(c.prompt)}
+          className="rounded-full border border-teal-800/15 bg-white/90 px-3 py-1.5 text-[12px] font-medium text-teal-900 shadow-sm transition hover:border-teal-700/40 hover:bg-teal-50"
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 function greetingForNow() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -301,6 +334,11 @@ export default function ChatPage() {
 
             <div className="mt-8 w-full max-w-[760px]">{prompt}</div>
 
+            <div className="mt-5 w-full max-w-[900px]">
+              <p className="mb-2 text-center text-[12px] font-medium text-[#9ca3af]">Ready to send</p>
+              <QuickChips onPick={send} />
+            </div>
+
             <div className="mt-12 w-full">
               <h2 className="mb-4 text-[15px] font-medium text-[#6b7280]">Suggested for you</h2>
               <BentoGrid className="lg:grid-rows-2">
@@ -399,7 +437,12 @@ export default function ChatPage() {
           </div>
 
           <div className="border-t border-[#e8eaed]/80 bg-gradient-to-t from-white via-white/95 to-white/70 px-4 py-4 backdrop-blur md:px-8">
-            <div className="mx-auto flex justify-center">{prompt}</div>
+            <div className="mx-auto max-w-[900px]">
+              {!busy && messages.length > 0 && messages.length < 4 ? (
+                <QuickChips onPick={send} className="mb-3 max-h-[72px] overflow-y-auto" />
+              ) : null}
+              <div className="flex justify-center">{prompt}</div>
+            </div>
           </div>
         </div>
       )}

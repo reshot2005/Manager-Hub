@@ -165,6 +165,17 @@ export const toolDeclarations = [
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
+    name: 'getTeamWorkBoard',
+    description:
+      "ALL employees in the manager's team: EOD submitted/missing for a date, open/assigned tasks, completed (Done) tasks, overdue count — one row per person. Use for 'all employee EODs', 'who completed tasks', 'assigned vs completed', team work tracking. Returns employees[], total_count, totals.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        date: { type: 'STRING', description: 'EOD date YYYY-MM-DD IST; default today' },
+      },
+    },
+  },
+  {
     name: 'getInterviewSchedule',
     description: 'Get interviews filtered by candidate name and/or date range (YYYY-MM-DD). Defaults to today.',
     parameters: {
@@ -325,6 +336,8 @@ const ALIASES = {
   getTeamPendingTasks: 'getPendingTasks',
   get_latest_eod: 'getLatestEod',
   get_team_summary: 'getTeamSummary',
+  get_team_work_board: 'getTeamWorkBoard',
+  getTeamTaskBoard: 'getTeamWorkBoard',
   get_interview_schedule: 'getInterviewSchedule',
   get_candidate_status: 'getCandidateStatus',
   search_people: 'searchPeople',
@@ -385,6 +398,9 @@ export async function executeTool(name, args, manager) {
         break;
       case 'getTeamSummary':
         result = await getTeamSummary(scope);
+        break;
+      case 'getTeamWorkBoard':
+        result = await getTeamWorkBoard(a, scope);
         break;
       case 'getInterviewSchedule':
         result = await getInterviewSchedule(a, scope);
@@ -1023,6 +1039,96 @@ async function getTeamSummary(scope) {
     eods_today: eodsToday,
     eod_submitted_count: eodsToday.filter((r) => r.status && r.status !== 'Draft').length,
     interviews_today: interviews,
+  };
+}
+
+/**
+ * Per-employee EOD + task board for the whole team (ACL-scoped).
+ */
+async function getTeamWorkBoard(args, scope) {
+  const today = await todayIst();
+  const date =
+    args?.date && /^\d{4}-\d{2}-\d{2}$/.test(String(args.date)) ? String(args.date) : today;
+  const acl = teamEmpFilter(scope, 'e', 2);
+  if (acl.clause === 'FALSE') {
+    return {
+      date,
+      employees: [],
+      total_count: 0,
+      totals: {},
+      message: 'No team linked to this manager.',
+    };
+  }
+
+  const params = [date, ...acl.params];
+  const { rows } = await query(
+    `SELECT
+       e.id,
+       e.name,
+       e.email,
+       e.department,
+       EXISTS (
+         SELECT 1 FROM eod_reports r
+         WHERE r.employee_id = e.id
+           AND r.report_date = $1::date
+           AND COALESCE(r.status, '') <> 'Draft'
+       ) AS eod_submitted,
+       (
+         SELECT COUNT(*)::int FROM tasks t
+         WHERE t.employee_id = e.id AND COALESCE(t.status, '') NOT IN ('Done')
+       ) AS open_tasks,
+       (
+         SELECT COUNT(*)::int FROM tasks t
+         WHERE t.employee_id = e.id AND COALESCE(t.status, '') = 'Done'
+       ) AS completed_tasks,
+       (
+         SELECT COUNT(*)::int FROM tasks t
+         WHERE t.employee_id = e.id
+           AND COALESCE(t.status, '') NOT IN ('Done')
+           AND t.due_date < $1::date
+           AND t.due_date > DATE '2000-01-01'
+       ) AS overdue_tasks,
+       (
+         SELECT COUNT(*)::int FROM tasks t WHERE t.employee_id = e.id
+       ) AS assigned_tasks_total
+     FROM employees e
+     WHERE COALESCE(e.is_active, TRUE) = TRUE
+       AND ${acl.clause}
+     ORDER BY e.name`,
+    params
+  );
+
+  const employees = rows.map((r) => ({
+    name: r.name,
+    email: r.email,
+    department: r.department,
+    eod_submitted: Boolean(r.eod_submitted),
+    eod_status: r.eod_submitted ? 'submitted' : 'missing',
+    open_tasks: r.open_tasks || 0,
+    completed_tasks: r.completed_tasks || 0,
+    overdue_tasks: r.overdue_tasks || 0,
+    assigned_tasks_total: r.assigned_tasks_total || 0,
+  }));
+
+  const totals = {
+    employees: employees.length,
+    eod_submitted: employees.filter((e) => e.eod_submitted).length,
+    eod_missing: employees.filter((e) => !e.eod_submitted).length,
+    open_tasks: employees.reduce((s, e) => s + e.open_tasks, 0),
+    completed_tasks: employees.reduce((s, e) => s + e.completed_tasks, 0),
+    overdue_tasks: employees.reduce((s, e) => s + e.overdue_tasks, 0),
+    assigned_tasks_total: employees.reduce((s, e) => s + e.assigned_tasks_total, 0),
+  };
+
+  return {
+    date,
+    timezone: 'Asia/Kolkata',
+    employees,
+    count: employees.length,
+    total_count: employees.length,
+    totals,
+    missing_eod_names: employees.filter((e) => !e.eod_submitted).map((e) => e.name),
+    note: 'List every employee when asked for all — total_count must match rows shown.',
   };
 }
 
