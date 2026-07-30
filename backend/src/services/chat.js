@@ -62,7 +62,31 @@ function yesterdayIst(todayIst) {
 
 function modelCandidates() {
   const preferred = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  return [...new Set([preferred, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'])];
+  // Prefer flash models with higher free-tier headroom; avoid cascading 429s.
+  return [
+    ...new Set([
+      preferred,
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+    ]),
+  ];
+}
+
+function isQuotaError(err) {
+  const msg = String(err?.message || err || '');
+  return (
+    err?.status === 429 ||
+    /\b429\b/.test(msg) ||
+    /Too Many Requests/i.test(msg) ||
+    /exceeded your current quota/i.test(msg) ||
+    /rate[_ ]?limit/i.test(msg)
+  );
+}
+
+function isModelMissingError(err) {
+  const msg = String(err?.message || err || '');
+  return err?.status === 404 || /\b404\b/.test(msg) || /not found for API version/i.test(msg);
 }
 
 function getModel(modelName) {
@@ -171,7 +195,7 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
       const chat = model.startChat({
         history: history.map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
+          parts: [{ text: String(m.content || '').slice(0, 4000) }],
         })),
       });
 
@@ -231,7 +255,14 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
       return { reply: text, toolsUsed: toolTrace.map((t) => t.name), toolTrace, modelName };
     } catch (err) {
       lastErr = err;
-      console.warn('[chat] model fail', modelName, String(err.message || err).slice(0, 160));
+      console.warn('[chat] model fail', modelName, String(err.message || err).slice(0, 200));
+      // Quota: stop immediately — retrying other models burns the same free-tier budget.
+      if (isQuotaError(err)) break;
+      // Only rotate models when this one is missing / unsupported.
+      if (!isModelMissingError(err) && !/_timeout$/i.test(String(err.message || ''))) {
+        // Transient network / 5xx — try next once; otherwise continue.
+        continue;
+      }
     }
   }
 
@@ -267,9 +298,18 @@ export async function chatWithGemini(manager, userMessage) {
       return { reply: fallback.reply, toolsUsed: fallback.toolsUsed || [], toolTrace };
     }
 
-    const text =
-      `Quick take: I couldn’t reach the language model just now (${String(err.message || err).slice(0, 100)}).\n\n` +
-      `I can still answer hub ops questions like **who was absent yesterday**, **present/late today**, or **daily briefing** — try one of those.`;
+    const quota = isQuotaError(err);
+    const text = quota
+      ? `Gemini API quota is exhausted right now (rate limit / free-tier cap).\n\n` +
+        `I can still answer directly from the hub — try:\n` +
+        `• **who was absent yesterday**\n` +
+        `• **present / late today**\n` +
+        `• **daily briefing**\n` +
+        `• **interviews today** / **overdue tasks** / **missing EODs**\n` +
+        `• **status of Name**\n\n` +
+        `Or enable billing / wait for the quota reset in Google AI Studio.`
+      : `I couldn’t reach the language model just now (${String(err.message || err).slice(0, 120)}).\n\n` +
+        `I can still answer hub ops questions like **who was absent yesterday**, **present/late today**, or **daily briefing**.`;
     await persistTurn(manager.id, userMessage, text, []);
     return { reply: text, toolsUsed: [], toolTrace: [] };
   }
