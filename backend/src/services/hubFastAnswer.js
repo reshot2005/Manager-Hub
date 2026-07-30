@@ -98,6 +98,20 @@ export async function tryHubFastAnswer(manager, userMessage) {
     /\bwho\b.*\bmissed\b/.test(q) ||
     /\bnot\s+present\b/.test(q);
   const asksYesterday = /\byesterday\b/.test(q) || /\blast\s+day\b/.test(q);
+  const asksThisWeek = /\bthis\s+week\b/.test(q) || /\bcurrent\s+week\b/.test(q);
+  const asksLastWeek = /\blast\s+week\b/.test(q);
+  const asksWeek = asksThisWeek || asksLastWeek || /\bweekly\b/.test(q);
+  const asksCompare =
+    /\bcompar/.test(q) ||
+    /\bvs\.?\b/.test(q) ||
+    /\bversus\b/.test(q) ||
+    /\bagainst\b/.test(q) ||
+    (asksThisWeek && asksLastWeek);
+  const asksPct =
+    /\bpercent/.test(q) ||
+    /\bpercentage\b/.test(q) ||
+    /\brate\b/.test(q) ||
+    /%/.test(q);
   const asksBrief =
     /\bbriefing\b/.test(q) ||
     /\bwho needs attention\b/.test(q) ||
@@ -122,7 +136,67 @@ export async function tryHubFastAnswer(manager, userMessage) {
     /\bfirst\s+punch/.test(q) ||
     /\bwho\s+came\s+after\b/.test(q);
 
+  function formatPeriodBlock(p, title) {
+    if (!p) return '';
+    if (p.synced_rows === 0) {
+      return (
+        `**${title}** (${p.start_date} → ${p.end_date} IST):\n` +
+        `No attendance rows synced in this range yet (not the same as 0% attendance).\n`
+      );
+    }
+    return (
+      `**${title}** (${p.start_date} → ${p.end_date} IST):\n` +
+      `• Synced rows: **${p.synced_rows}** across **${p.synced_days}** day(s)\n` +
+      `• Present **${p.present}** · Late **${p.late}** · Absent **${p.absent}** · On leave **${p.on_leave}** · Half day **${p.half_day}**\n` +
+      `• Attendance %: **${p.attendance_pct}%** · Absent %: **${p.absent_pct}%**\n`
+    );
+  }
+
   try {
+    // Week compare / weekly % — never route to getAttendanceToday
+    if (
+      asksCompare ||
+      (asksWeek && asksPct) ||
+      (asksWeek && /\battendance\b/.test(q) && !asksAbsent)
+    ) {
+      let finalArgs;
+      if (asksCompare || (asksThisWeek && asksLastWeek)) {
+        finalArgs = { periodA: 'this_week', periodB: 'last_week' };
+      } else if (asksPct || (asksWeek && /\battendance\b/.test(q))) {
+        finalArgs = { periodA: asksLastWeek && !asksThisWeek ? 'last_week' : 'this_week' };
+        // Still include last week when user said "compare" already handled; for plain
+        // "attendance this week" show this week + last week for context when they said compare only
+        if (asksCompare) finalArgs.periodB = 'last_week';
+      } else {
+        finalArgs = { periodA: 'this_week', periodB: 'last_week' };
+      }
+      // Explicit: "compare … this week vs last week" always both periods
+      if (asksCompare) finalArgs = { periodA: 'this_week', periodB: 'last_week' };
+
+      const data = await executeTool('getAttendanceComparison', finalArgs, manager);
+      const a = data?.period_a;
+      const b = data?.period_b;
+      let reply = '';
+      if (b && data?.delta) {
+        reply =
+          `**Attendance compare** (IST weeks Mon–Sun)\n\n` +
+          formatPeriodBlock(a, 'This week') +
+          `\n` +
+          formatPeriodBlock(b, 'Last week') +
+          `\n**Delta (this − last):** attendance **${data.delta.attendance_pct_points >= 0 ? '+' : ''}${data.delta.attendance_pct_points}** pts · ` +
+          `absent count **${data.delta.absent_count >= 0 ? '+' : ''}${data.delta.absent_count}** · ` +
+          `late **${data.delta.late_count >= 0 ? '+' : ''}${data.delta.late_count}**.\n\n` +
+          `${data.formula}`;
+      } else if (a) {
+        reply =
+          formatPeriodBlock(a, a.label === 'last_week' ? 'Last week' : 'This week') +
+          `\n${data.formula || ''}`;
+      } else {
+        reply = 'Could not compute attendance for that period.';
+      }
+      return { handled: true, reply, toolsUsed: ['getAttendanceComparison'] };
+    }
+
     if (asksBrief) {
       const data = await executeTool('getDailyBriefing', {}, manager);
       const toolsUsed = ['getDailyBriefing'];
@@ -161,13 +235,38 @@ export async function tryHubFastAnswer(manager, userMessage) {
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
+    if (asksAbsent && asksWeek) {
+      const range = asksLastWeek && !asksThisWeek ? 'last_week' : 'this_week';
+      const data = await executeTool('getAbsentees', { range }, manager);
+      const people = data?.by_person || [];
+      const rows = data?.absentees || [];
+      if (!rows.length) {
+        return {
+          handled: true,
+          reply:
+            `**0** Absent rows for **${data?.start_date} → ${data?.end_date}** (IST, ${range}).\n` +
+            (data?.note || 'If unexpected, sync Attendance — not the same as inventing absentees.'),
+          toolsUsed: ['getAbsentees'],
+        };
+      }
+      const reply =
+        `**${data.unique_people || people.length}** people absent at least once · **${data.total_count}** absent day-rows ` +
+        `(**${data.start_date} → ${data.end_date}** IST).\n\n` +
+        people
+          .map((p) => `- **${p.name}** — ${p.dates.join(', ')}`)
+          .join('\n') +
+        `\n\n${people.length} people listed above, matching ${data.unique_people || people.length} unique absentees.`;
+      return { handled: true, reply, toolsUsed: ['getAbsentees'] };
+    }
+
     if (asksAbsent) {
       const date = todayIst;
       const data = await executeTool('getAbsentees', { date }, manager);
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `**0** absentees on **${date}** (IST).`
+          ? `**0** absentees on **${date}** (IST).` +
+            (data?.note ? `\n${data.note}` : '')
           : `**${rows.length}** absent on **${date}** (IST):\n` +
             rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
@@ -199,11 +298,13 @@ export async function tryHubFastAnswer(manager, userMessage) {
     }
 
     if (
-      /\bpresent\b/.test(q) ||
-      /\blate\b/.test(q) ||
-      /\battendance\b/.test(q) ||
-      /\broll\b/.test(q) ||
-      /\bwho\s+(is|are)\s+here\b/.test(q)
+      !asksWeek &&
+      !asksCompare &&
+      (/\bpresent\b/.test(q) ||
+        /\blate\b/.test(q) ||
+        /\battendance\b/.test(q) ||
+        /\broll\b/.test(q) ||
+        /\bwho\s+(is|are)\s+here\b/.test(q))
     ) {
       const data = await executeTool('getAttendanceToday', {}, manager);
       if (data?.note && !(data.present?.length || data.late?.length || data.absent?.length)) {

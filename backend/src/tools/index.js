@@ -202,8 +202,26 @@ export const toolDeclarations = [
   {
     name: 'getAttendanceToday',
     description:
-      "Who is present, absent, or late today (IST). Use for daily attendance roll-call.",
+      "Who is present, absent, or late TODAY only (IST). Do NOT use for week ranges or week-vs-week comparisons.",
     parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'getAttendanceComparison',
+    description:
+      "Compare team attendance across two periods (default this_week vs last_week, Mon–Sun IST). Returns counts, attendance %, absent %, synced day coverage, and deltas. Use for 'compare this week vs last week', 'attendance percentage this week', weekly trends.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        periodA: {
+          type: 'STRING',
+          description: 'this_week | last_week | YYYY-MM-DD:YYYY-MM-DD',
+        },
+        periodB: {
+          type: 'STRING',
+          description: 'this_week | last_week | YYYY-MM-DD:YYYY-MM-DD (omit for single-period stats)',
+        },
+      },
+    },
   },
   {
     name: 'getEmployeeAttendance',
@@ -222,12 +240,19 @@ export const toolDeclarations = [
   },
   {
     name: 'getAbsentees',
-    description: 'List employees who were Absent on a date or this week.',
+    description:
+      "List employees marked Absent. Use date=YYYY-MM-DD for one day; range=this_week or last_week (Mon–Sun IST) for weekly absentees; or startDate+endDate. Never use getAttendanceToday for weekly absent lists.",
     parameters: {
       type: 'OBJECT',
       properties: {
-        date: { type: 'STRING', description: 'YYYY-MM-DD (defaults today IST)' },
-        week: { type: 'STRING', description: 'Set to true for last 7 days' },
+        date: { type: 'STRING', description: 'YYYY-MM-DD (single day; defaults today IST)' },
+        range: {
+          type: 'STRING',
+          description: 'this_week | last_week',
+        },
+        week: { type: 'STRING', description: 'true = this_week (alias)' },
+        startDate: { type: 'STRING' },
+        endDate: { type: 'STRING' },
       },
     },
   },
@@ -304,6 +329,8 @@ const ALIASES = {
   get_candidate_status: 'getCandidateStatus',
   search_people: 'searchPeople',
   get_attendance_today: 'getAttendanceToday',
+  get_attendance_comparison: 'getAttendanceComparison',
+  getAttendanceWeekCompare: 'getAttendanceComparison',
   get_employee_attendance: 'getEmployeeAttendance',
   get_absentees: 'getAbsentees',
   get_login_timing: 'getLoginTiming',
@@ -370,6 +397,9 @@ export async function executeTool(name, args, manager) {
         break;
       case 'getAttendanceToday':
         result = await getAttendanceToday(scope);
+        break;
+      case 'getAttendanceComparison':
+        result = await getAttendanceComparison(a, scope);
         break;
       case 'getEmployeeAttendance':
         result = await getEmployeeAttendance(a, scope);
@@ -1051,6 +1081,162 @@ async function getAttendanceToday(scope) {
   };
 }
 
+/** ISO week Mon–Sun bounds relative to an IST calendar date. */
+async function resolveWeekBounds(anchorDate, which = 'this_week') {
+  const { rows } = await query(
+    `WITH a AS (
+       SELECT $1::date AS d
+     ),
+     this_start AS (
+       SELECT date_trunc('week', d::timestamp)::date AS start FROM a
+     )
+     SELECT
+       CASE WHEN $2 = 'last_week' THEN (start - 7) ELSE start END AS start_date,
+       CASE WHEN $2 = 'last_week' THEN (start - 1) ELSE (start + 6) END AS end_date
+     FROM this_start`,
+    [anchorDate, which === 'last_week' ? 'last_week' : 'this_week']
+  );
+  return {
+    start: rows[0].start_date,
+    end: rows[0].end_date,
+    label: which === 'last_week' ? 'last_week' : 'this_week',
+  };
+}
+
+async function resolvePeriodBounds(period, today) {
+  const p = String(period || 'this_week').trim().toLowerCase();
+  if (p === 'this_week' || p === 'week') return resolveWeekBounds(today, 'this_week');
+  if (p === 'last_week') return resolveWeekBounds(today, 'last_week');
+  const m = p.match(/^(\d{4}-\d{2}-\d{2})\s*:\s*(\d{4}-\d{2}-\d{2})$/);
+  if (m) return { start: m[1], end: m[2], label: `${m[1]}_to_${m[2]}` };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(p)) return { start: p, end: p, label: p };
+  return resolveWeekBounds(today, 'this_week');
+}
+
+async function summarizeAttendanceRange(scope, start, end, label) {
+  const acl = teamEmpFilter(scope, 'e', 3);
+  if (acl.clause === 'FALSE') {
+    return {
+      label,
+      start_date: start,
+      end_date: end,
+      synced_rows: 0,
+      present: 0,
+      late: 0,
+      absent: 0,
+      half_day: 0,
+      on_leave: 0,
+      holiday: 0,
+      attendance_pct: null,
+      absent_pct: null,
+      by_day: [],
+      note: 'No team linked.',
+    };
+  }
+  const params = [start, end, ...acl.params];
+  const { rows: totals } = await query(
+    `SELECT
+       COUNT(*)::int AS synced_rows,
+       COUNT(*) FILTER (WHERE d.status = 'Present')::int AS present,
+       COUNT(*) FILTER (WHERE d.status = 'Late')::int AS late,
+       COUNT(*) FILTER (WHERE d.status = 'Absent')::int AS absent,
+       COUNT(*) FILTER (WHERE d.status = 'Half Day')::int AS half_day,
+       COUNT(*) FILTER (WHERE d.status = 'On Leave')::int AS on_leave,
+       COUNT(*) FILTER (WHERE d.status = 'Holiday')::int AS holiday,
+       COUNT(DISTINCT d.work_date)::int AS synced_days,
+       COUNT(DISTINCT d.employee_id)::int AS employees_with_data
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.work_date BETWEEN $1::date AND $2::date
+       AND ${acl.clause}`,
+    params
+  );
+  const t = totals[0] || {};
+  const synced = t.synced_rows || 0;
+  const inOffice = (t.present || 0) + (t.late || 0) + (t.half_day || 0);
+  const attendance_pct =
+    synced > 0 ? Math.round((inOffice / synced) * 1000) / 10 : null;
+  const absent_pct =
+    synced > 0 ? Math.round(((t.absent || 0) / synced) * 1000) / 10 : null;
+
+  const { rows: byDay } = await query(
+    `SELECT
+       d.work_date::text AS work_date,
+       COUNT(*)::int AS synced_rows,
+       COUNT(*) FILTER (WHERE d.status = 'Present')::int AS present,
+       COUNT(*) FILTER (WHERE d.status = 'Late')::int AS late,
+       COUNT(*) FILTER (WHERE d.status = 'Absent')::int AS absent,
+       COUNT(*) FILTER (WHERE d.status = 'On Leave')::int AS on_leave
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.work_date BETWEEN $1::date AND $2::date
+       AND ${acl.clause}
+     GROUP BY d.work_date
+     ORDER BY d.work_date`,
+    params
+  );
+
+  return {
+    label,
+    start_date: start,
+    end_date: end,
+    timezone: 'Asia/Kolkata',
+    synced_rows: synced,
+    synced_days: t.synced_days || 0,
+    employees_with_data: t.employees_with_data || 0,
+    present: t.present || 0,
+    late: t.late || 0,
+    absent: t.absent || 0,
+    half_day: t.half_day || 0,
+    on_leave: t.on_leave || 0,
+    holiday: t.holiday || 0,
+    attendance_pct,
+    absent_pct,
+    by_day: byDay,
+    note:
+      synced === 0
+        ? `No attendance_days rows synced for ${start} → ${end} (IST). That is not the same as 0% attendance.`
+        : null,
+  };
+}
+
+async function getAttendanceComparison(args, scope) {
+  const today = await todayIst();
+  const periodA = await resolvePeriodBounds(args?.periodA || 'this_week', today);
+  const wantsB = args?.periodB != null && String(args.periodB).trim() !== '';
+  const periodB = wantsB
+    ? await resolvePeriodBounds(args.periodB || 'last_week', today)
+    : args?.periodA
+      ? null
+      : await resolvePeriodBounds('last_week', today);
+
+  const a = await summarizeAttendanceRange(scope, periodA.start, periodA.end, periodA.label);
+  const b = periodB
+    ? await summarizeAttendanceRange(scope, periodB.start, periodB.end, periodB.label)
+    : null;
+
+  let delta = null;
+  if (b && a.attendance_pct != null && b.attendance_pct != null) {
+    delta = {
+      attendance_pct_points: Math.round((a.attendance_pct - b.attendance_pct) * 10) / 10,
+      absent_count: a.absent - b.absent,
+      late_count: a.late - b.late,
+      present_count: a.present - b.present,
+      synced_rows: a.synced_rows - b.synced_rows,
+    };
+  }
+
+  return {
+    timezone: 'Asia/Kolkata',
+    today_ist: today,
+    period_a: a,
+    period_b: b,
+    delta,
+    formula:
+      'attendance_pct = (Present + Late + Half Day) / synced attendance_days rows × 100. Unsynced days are excluded, not treated as absent.',
+  };
+}
+
 async function getEmployeeAttendance(args, scope) {
   const name = args.employeeName || args.name;
   if (!name) return { error: 'employeeName required' };
@@ -1109,38 +1295,87 @@ async function getEmployeeAttendance(args, scope) {
 }
 
 async function getAbsentees(args, scope) {
-  const acl = teamEmpFilter(scope, 'e', 2);
-  if (acl.clause === 'FALSE') return { absentees: [], message: 'No team linked.' };
+  const acl = teamEmpFilter(scope, 'e', 3);
+  if (acl.clause === 'FALSE') return { absentees: [], total_count: 0, message: 'No team linked.' };
 
-  const week = String(args.week || '').toLowerCase() === 'true' || args.week === true;
-  if (week) {
-    const today = await todayIst();
-    const params = [today, ...acl.params];
-    const { rows } = await query(
-      `SELECT e.name, e.email, d.work_date, d.status
-       FROM attendance_days d
-       JOIN employees e ON e.id = d.employee_id
-       WHERE d.status = 'Absent'
-         AND d.work_date >= ($1::date - INTERVAL '6 days')
-         AND d.work_date <= $1::date
-         AND ${acl.clause}
-       ORDER BY d.work_date DESC, e.name`,
-      params
-    );
-    return { week: true, absentees: rows, count: rows.length };
+  const today = await todayIst();
+  const rangeRaw = String(args?.range || '').toLowerCase();
+  const weekFlag =
+    String(args?.week || '').toLowerCase() === 'true' ||
+    args?.week === true ||
+    rangeRaw === 'week' ||
+    rangeRaw === 'this_week';
+  const lastWeek = rangeRaw === 'last_week';
+
+  let start = args?.startDate;
+  let end = args?.endDate;
+  let label = 'custom';
+
+  if (weekFlag || lastWeek) {
+    const bounds = await resolveWeekBounds(today, lastWeek ? 'last_week' : 'this_week');
+    start = bounds.start;
+    end = bounds.end;
+    label = bounds.label;
+  } else if (start && end) {
+    label = `${start}_to_${end}`;
+  } else if (args?.date) {
+    start = args.date;
+    end = args.date;
+    label = 'day';
+  } else {
+    start = today;
+    end = today;
+    label = 'day';
   }
 
-  const date = args.date || (await todayIst());
-  const params = [date, ...acl.params];
+  const params = [start, end, ...acl.params];
   const { rows } = await query(
-    `SELECT e.name, e.email, d.work_date, d.status
+    `SELECT e.name, e.email, d.work_date::text AS work_date, d.status
      FROM attendance_days d
      JOIN employees e ON e.id = d.employee_id
-     WHERE d.status = 'Absent' AND d.work_date = $1::date AND ${acl.clause}
-     ORDER BY e.name`,
+     WHERE d.status = 'Absent'
+       AND d.work_date BETWEEN $1::date AND $2::date
+       AND ${acl.clause}
+     ORDER BY d.work_date DESC, e.name
+     LIMIT 500`,
     params
   );
-  return { date, absentees: rows, count: rows.length };
+
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*)::int AS c
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.status = 'Absent'
+       AND d.work_date BETWEEN $1::date AND $2::date
+       AND ${acl.clause}`,
+    params
+  );
+  const total_count = countRows[0]?.c || 0;
+
+  // Unique people absent at least once in range
+  const byPerson = new Map();
+  for (const r of rows) {
+    const key = r.name;
+    if (!byPerson.has(key)) byPerson.set(key, { name: r.name, email: r.email, dates: [] });
+    byPerson.get(key).dates.push(r.work_date);
+  }
+
+  return {
+    range: label,
+    start_date: start,
+    end_date: end,
+    timezone: 'Asia/Kolkata',
+    absentees: rows,
+    by_person: [...byPerson.values()],
+    count: rows.length,
+    total_count,
+    unique_people: byPerson.size,
+    truncated: total_count > rows.length,
+    note:
+      total_count === 0
+        ? `No Absent rows synced for ${start} → ${end}. If unexpected, sync Attendance — not the same as inventing absentees.`
+        : null,
+  };
 }
 
 async function getLoginTiming(args, scope) {

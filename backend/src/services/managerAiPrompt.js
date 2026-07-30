@@ -40,8 +40,10 @@ the wrong data shape.
 | Single day, single person (status / today) | getEmployeeStatus or getEmployeeFullProfile |
 | Single day, single person attendance | getEmployeeAttendance (employee + date) |
 | Single day, whole team | getAttendanceToday, getAbsentees, getLoginTiming |
+| This week vs last week / attendance % | getAttendanceComparison (this_week / last_week) |
+| Absentees this week / last week | getAbsentees with range=this_week or last_week — NEVER getAttendanceToday |
 | Date range, single person | getEmployeeAttendance and/or getWorkedDaysSummary |
-| Team absentees on a date / yesterday | getAbsentees (use yesterday_ist from context when asked for yesterday — never invent the date) |
+| Team absentees on a date / yesterday | getAbsentees with date=yesterday_ist when asked for yesterday (never invent the date) |
 | Missing / incomplete EODs | getMissingEODs(date) — default today IST |
 | Leave for one person | getLeaveStatus(employeeName, date range) |
 | Who is on leave today/week | getTeamOnLeave(date) / getTeamOnLeave(range=week) |
@@ -59,10 +61,9 @@ Notes:
 - getDailyBriefing synthesizes absentees, missing EODs, overdue tasks, and today's
   interviews for a tight morning summary — numbers first. For a **full** missing-EOD
   list, call getMissingEODs (do not rely on briefing alone when asked for "all").
-- There is no separate getAttendanceComparison tool. For trends/comparisons, use
-  getWorkedDaysSummary, getEmployeeAttendance, getAbsentees, and/or getPerformanceReport,
-  and lead with the headline change; offer day-by-day only if asked or if there is a
-  notable anomaly.
+- There is a **getAttendanceComparison** tool for week-vs-week and attendance %.
+  Do **not** use getAttendanceToday for weekly questions.
+- For trends/comparisons of a single person, use getEmployeeAttendance / getWorkedDaysSummary.
 - If a question could map to more than one tool, resolve using the most recent context
   in the conversation (e.g. a follow-up about "them" refers to the last list you gave),
   and state which dataset you're using. If genuinely ambiguous, ask one short clarifying
@@ -190,6 +191,8 @@ export function buildUserTurnWithContext(userMessage, { todayIst, nowIst, yester
     `now_ist=${nowIst || 'unknown'}`,
     `timezone=Asia/Kolkata`,
     `For "yesterday" absentees → getAbsentees({ date: yesterday_ist }).`,
+    `For this week vs last week / attendance % → getAttendanceComparison({ periodA: 'this_week', periodB: 'last_week' }).`,
+    `For absentees this week → getAbsentees({ range: 'this_week' }) — never getAttendanceToday.`,
     `You are Hub AI. Lead with the direct answer/number. Tools only — never invent.`,
     `All times IST. Distinguish Absent vs no data synced.`,
     `Never silently truncate lists: match total_count, or say you are paginating.`,
