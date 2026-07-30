@@ -72,16 +72,25 @@ function extractEmployeeName(q) {
     /(?:tasks?|pending|overdue)\s+(?:for|of)\s+([a-z][a-z.' -]{1,40})/i,
     /^([a-z][a-z.'-]{1,30})\s+(?:status|today|attendance|eod|tasks?)\??$/i,
   ];
+  const STOP = new Set([
+    'who', 'what', 'when', 'where', 'how', 'show', 'list', 'get', 'my', 'our',
+    'the', 'a', 'an', 'all', 'every', 'everyone', 'entire', 'whole', 'team',
+    'staff', 'employee', 'employees', 'people', 'person', 'today', 'yesterday',
+    'week', 'please', 'now', 'me', 'us', 'this', 'that', 'their', 'your',
+  ]);
   for (const re of patterns) {
     const m = q.match(re);
     if (!m?.[1]) continue;
-    const name = m[1]
-      .replace(/\b(today|yesterday|please|now|team|the)\b/gi, '')
+    let name = m[1]
+      .replace(/\b(today|yesterday|please|now|team|the|whole|entire|all|everyone|my|our)\b/gi, '')
       .replace(/[?.!,]+$/g, '')
       .trim();
-    if (name.length >= 2 && !/^(who|what|when|where|how|show|list|get|my)$/i.test(name)) {
-      return name;
-    }
+    if (name.length < 2) continue;
+    const parts = name.toLowerCase().split(/\s+/).filter(Boolean);
+    if (parts.every((p) => STOP.has(p))) continue;
+    if (STOP.has(name.toLowerCase())) continue;
+    if (/^(who|what|when|where|how|show|list|get|my)$/i.test(name)) continue;
+    return name;
   }
   return null;
 }
@@ -130,17 +139,24 @@ export async function tryHubFastAnswer(manager, userMessage) {
     /\bdaily\s+report/.test(q) ||
     /\bmissing\s+eod/.test(q) ||
     /\bwho\b.*\bsubmit/.test(q);
+  const asksTeamWide =
+    /\b(all|every|everyone|entire|whole)\b/.test(q) ||
+    /\b(for\s+)?(the\s+)?team\b/.test(q) ||
+    /\bemployees?\b/.test(q);
   const asksTeamWork =
-    /\b(all|every|everyone|entire)\s+(employee|team|staff)/.test(q) ||
+    /\bshow\s+all\s+employees?\b/.test(q) ||
+    /\b(all|every|everyone|entire)\s+employees?\b/.test(q) ||
     /\bteam\s+work\b/.test(q) ||
     /\bwork\s+board\b/.test(q) ||
-    (/\beod\b/.test(q) && /\b(all|everyone|team)\b/.test(q)) ||
+    (/\beod\b/.test(q) && asksTeamWide) ||
+    (/\b(assigned|completed|completion)\b/.test(q) && /\b(open|overdue|eod|tasks?)\b/.test(q)) ||
     (/\btasks?\b/.test(q) &&
       /\b(assigned|completed|completion|open|done)\b/.test(q) &&
-      /\b(all|everyone|team|each)\b/.test(q)) ||
+      asksTeamWide) ||
     /\bassigned\s+vs\s+completed\b/.test(q) ||
-    /\bcompleted\s+tasks?\b/.test(q) ||
-    /\btask\s+status\s+(for\s+)?(all|everyone|team)\b/.test(q);
+    /\btask\s+status\s+(for\s+)?(all|everyone|team|whole)\b/.test(q) ||
+    (/\beod\b/.test(q) &&
+      /\b(assigned|open|completed|overdue)\b/.test(q));
   const asksLogin =
     /\blogin\s+tim/.test(q) ||
     /\bcheck[- ]?in/.test(q) ||
@@ -342,7 +358,7 @@ export async function tryHubFastAnswer(manager, userMessage) {
       return { handled: true, reply, toolsUsed: ['getAttendanceToday'] };
     }
 
-    if (asksInterviews && !extractEmployeeName(q)) {
+    if (asksInterviews && !extractEmployeeName(userMessage)) {
       const data = await executeTool('getInterviewSchedule', { date: todayIst }, manager);
       const rows = data?.interviews || [];
       const reply =
@@ -359,28 +375,8 @@ export async function tryHubFastAnswer(manager, userMessage) {
       return { handled: true, reply, toolsUsed: ['getInterviewSchedule'] };
     }
 
-    if (asksTasks && !extractEmployeeName(q)) {
-      const data = await executeTool('getPendingTasks', {}, manager);
-      const overdue = (data?.tasks || []).filter((t) => t.is_overdue || t.overdue);
-      const focus = /\boverdue\b/.test(q) ? overdue : data?.tasks || [];
-      const reply =
-        focus.length === 0
-          ? `**0** matching pending/overdue tasks in your team right now.`
-          : `**${focus.length}** task(s)${/\boverdue\b/.test(q) ? ' overdue' : ' pending'}` +
-            `${data?.total_count && data.total_count > focus.length ? ` (showing ${focus.length} of ${data.total_count})` : ''}:\n` +
-            focus
-              .slice(0, 40)
-              .map(
-                (t) =>
-                  `- **${t.title || t.name}** · ${t.employee_name || t.assignee || '—'} · ${t.status || ''}${
-                    t.due_date ? ` · due ${t.due_date}` : ''
-                  }`
-              )
-              .join('\n');
-      return { handled: true, reply, toolsUsed: ['getPendingTasks'] };
-    }
-
-    if (asksTeamWork || (asksEod && /\b(all|everyone|team|list)\b/.test(q) && !extractEmployeeName(q))) {
+    // Team work board BEFORE pending-task short-circuit (overdue/open words are common here)
+    if (asksTeamWork) {
       const data = await executeTool('getTeamWorkBoard', {}, manager);
       const emps = data?.employees || [];
       const t = data?.totals || {};
@@ -404,7 +400,35 @@ export async function tryHubFastAnswer(manager, userMessage) {
       return { handled: true, reply, toolsUsed: ['getTeamWorkBoard'] };
     }
 
-    if (asksEod && !extractEmployeeName(q)) {
+    if (asksTasks && (!extractEmployeeName(userMessage) || asksTeamWide)) {
+      const data = await executeTool('getPendingTasks', {}, manager);
+      const rows = data?.tasks || [];
+      const overdueOnly = /\boverdue\b/.test(q) && !/\bpending\b/.test(q);
+      const focus = overdueOnly
+        ? rows.filter((t) => {
+            const due = t.due_date ? String(t.due_date).slice(0, 10) : null;
+            return due && due < todayIst && due > '2000-01-01';
+          })
+        : rows;
+      const reply =
+        focus.length === 0
+          ? `**0** ${overdueOnly ? 'overdue' : 'pending'} tasks in your team right now` +
+            `${data?.total_count ? ` (hub open-task count: ${data.total_count})` : ''}.`
+          : `**${focus.length}** ${overdueOnly ? 'overdue' : 'pending'} task(s)` +
+            `${data?.total_count && data.total_count > focus.length ? ` (showing ${focus.length} of ${data.total_count} open)` : ''}:\n` +
+            focus
+              .slice(0, 50)
+              .map(
+                (t) =>
+                  `- **${t.title || t.name}** · ${t.employee_name || t.assignee || '—'} · ${t.status || ''}${
+                    t.due_date ? ` · due ${String(t.due_date).slice(0, 10)}` : ''
+                  }`
+              )
+              .join('\n');
+      return { handled: true, reply, toolsUsed: ['getPendingTasks'] };
+    }
+
+    if (asksEod && !extractEmployeeName(userMessage)) {
       const data = await executeTool('getDailyBriefing', {}, manager);
       const missing = data?.missing_eods || [];
       const reply =
