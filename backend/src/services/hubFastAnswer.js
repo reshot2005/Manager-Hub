@@ -155,7 +155,12 @@ export async function tryHubFastAnswer(manager, userMessage) {
     /\blogin\s+tim/.test(q) ||
     /\bcheck[- ]?in/.test(q) ||
     /\bfirst\s+punch/.test(q) ||
-    /\bwho\s+came\s+after\b/.test(q);
+    /\bwho\s+came\s+after\b/.test(q) ||
+    /\bcame\s+late\b/.test(q) ||
+    /\bwho\s+(was|were|is|are)\s+late\b/.test(q) ||
+    /\blate\s+(comers?|arrivals?)\b/.test(q) ||
+    /\bafter\s+9\s*:?\s*30\b/.test(q) ||
+    (/\blate\b/.test(q) && !asksAbsent && !asksPct);
 
   function formatPeriodBlock(p, title) {
     if (!p) return '';
@@ -254,10 +259,21 @@ export async function tryHubFastAnswer(manager, userMessage) {
     if (asksAbsent && asksYesterday) {
       const data = await executeTool('getAbsentees', { date: yesterdayIst }, manager);
       const rows = data?.absentees || [];
+      if ((data?.synced_rows ?? null) === 0) {
+        return {
+          handled: true,
+          reply:
+            `No attendance synced for **${yesterdayIst}** (yesterday, IST) yet — so I cannot confirm absentees.\n` +
+            (data?.latest_synced_date
+              ? `Latest day with team attendance data: **${data.latest_synced_date}**.\n`
+              : '') +
+            `Trigger Attendance sync, then ask again. This is not the same as “0 absentees.”`,
+          toolsUsed: ['getAbsentees'],
+        };
+      }
       const reply =
         rows.length === 0
-          ? `**0** people marked **Absent** on **${yesterdayIst}** (yesterday, IST).\n\n` +
-            `If that feels incomplete, hub sync may still be catching up — that is not the same as inventing absentees.`
+          ? `**0** people marked **Absent** on **${yesterdayIst}** (yesterday, IST) — attendance is synced for that day.`
           : `**${rows.length}** people were absent on **${yesterdayIst}** (yesterday, IST):\n` +
             rows.map((r) => `- **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
@@ -266,10 +282,17 @@ export async function tryHubFastAnswer(manager, userMessage) {
     if (asksAbsent && asksTomorrow) {
       const data = await executeTool('getAbsentees', { date: tomorrowIst }, manager);
       const rows = data?.absentees || [];
+      if ((data?.synced_rows ?? null) === 0) {
+        return {
+          handled: true,
+          reply:
+            `No attendance synced for **${tomorrowIst}** (tomorrow, IST) yet — cannot list absentees.`,
+          toolsUsed: ['getAbsentees'],
+        };
+      }
       const reply =
         rows.length === 0
-          ? `**0** people marked **Absent** on **${tomorrowIst}** (tomorrow, IST).` +
-            (data?.note ? `\n${data.note}` : '')
+          ? `**0** people marked **Absent** on **${tomorrowIst}** (tomorrow, IST).`
           : `**${rows.length}** absent on **${tomorrowIst}** (tomorrow, IST):\n` +
             rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
@@ -304,10 +327,21 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const label = dayPick.relative;
       const data = await executeTool('getAbsentees', { date }, manager);
       const rows = data?.absentees || [];
+      if ((data?.synced_rows ?? null) === 0) {
+        return {
+          handled: true,
+          reply:
+            `No attendance synced for **${date}** (${label}, IST) yet — cannot confirm absentees.\n` +
+            (data?.latest_synced_date
+              ? `Latest day with team attendance data: **${data.latest_synced_date}**.\n`
+              : '') +
+            `This is not the same as “0 absentees.”`,
+          toolsUsed: ['getAbsentees'],
+        };
+      }
       const reply =
         rows.length === 0
-          ? `**0** absentees on **${date}** (${label}, IST).` +
-            (data?.note ? `\n${data.note}` : '')
+          ? `**0** absentees on **${date}** (${label}, IST) — attendance is synced for that day.`
           : `**${rows.length}** absent on **${date}** (${label}, IST):\n` +
             rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
@@ -316,33 +350,45 @@ export async function tryHubFastAnswer(manager, userMessage) {
     if (asksLogin) {
       const data = await executeTool('getLoginTiming', { date: targetDay }, manager);
       const rows = data?.timings || data?.late || [];
-      if (!rows.length) {
+      const dayLabel =
+        targetDay === yesterdayIst
+          ? 'yesterday'
+          : targetDay === tomorrowIst
+            ? 'tomorrow'
+            : dayPick.relative;
+      if ((data?.synced_rows ?? rows.length) === 0) {
         return {
           handled: true,
-          reply: `No login timing rows synced for **${todayIst}** (IST) yet.`,
+          reply:
+            `No attendance synced for **${data?.date || targetDay}** (${dayLabel}, IST) yet — cannot list late check-ins.\n` +
+            (data?.latest_synced_date
+              ? `Latest day with team attendance data: **${data.latest_synced_date}**.\n`
+              : '') +
+            `Run Attendance sync, then ask again.`,
           toolsUsed: ['getLoginTiming'],
         };
       }
-      const lateOnly = rows.filter((r) => (r.late_minutes || 0) > 0 || r.status === 'Late');
+      const lateOnly = rows.filter(
+        (r) =>
+          (r.late_minutes || 0) > 0 ||
+          r.status === 'Late' ||
+          (/\bafter\s+9\s*:?\s*30\b/.test(q) && (r.late_minutes || 0) > 0)
+      );
       const reply =
-        `Login timings for **${data?.date || todayIst}** (IST) — **${lateOnly.length}** late of **${rows.length}** with punches:\n` +
+        `**${lateOnly.length}** late of **${rows.length}** with attendance on **${data?.date || targetDay}** (${dayLabel}, IST).\n` +
+        `Late = first check-in after each person’s late_after (default **09:30** IST).\n\n` +
         (lateOnly.length
-          ? lateOnly.slice(0, 30).map((r) => `- ${formatLateLine(r)}`).join('\n')
-          : rows
-              .slice(0, 15)
-              .map(
-                (r) =>
-                  `- **${r.name}** — in ${formatTimeIst(r.first_in) || '—'}`
-              )
-              .join('\n'));
+          ? lateOnly.slice(0, 40).map((r) => `- ${formatLateLine(r)}`).join('\n')
+          : 'Nobody marked late / after their late_after cutoff.') +
+        `\n\n${lateOnly.length} late listed above.`;
       return { handled: true, reply, toolsUsed: ['getLoginTiming'] };
     }
 
     if (
       !asksWeek &&
       !asksCompare &&
+      !asksLogin &&
       (/\bpresent\b/.test(q) ||
-        /\blate\b/.test(q) ||
         /\battendance\b/.test(q) ||
         /\broll\b/.test(q) ||
         /\bwho\s+(is|are)\s+here\b/.test(q))
@@ -359,7 +405,10 @@ export async function tryHubFastAnswer(manager, userMessage) {
         return {
           handled: true,
           reply:
-            `No attendance data synced for **${data?.date || targetDay}** (${dayLabel}, IST) yet.\n\n` +
+            `No attendance data synced for **${data?.date || targetDay}** (${dayLabel}, IST) yet.\n` +
+            (data?.latest_synced_date
+              ? `Latest day with team attendance data: **${data.latest_synced_date}**.\n`
+              : '') +
             `That is not the same as everyone being absent — sync Attendance and ask again.`,
           toolsUsed: ['getAttendanceToday'],
         };

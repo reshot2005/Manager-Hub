@@ -1216,10 +1216,26 @@ async function getAttendanceToday(scope, args = {}) {
   const relative =
     day === cal.yesterday ? 'yesterday' : day === cal.tomorrow ? 'tomorrow' : day === cal.today ? 'today' : 'custom';
 
+  let latest_synced_date = null;
+  if (acl.clause !== 'FALSE') {
+    const latestAcl = teamEmpFilter(scope, 'e', 1);
+    const { rows: latestRows } = await query(
+      `SELECT MAX(d.work_date)::text AS latest
+       FROM attendance_days d
+       JOIN employees e ON e.id = d.employee_id
+       WHERE ${latestAcl.clause}`,
+      latestAcl.params
+    );
+    latest_synced_date = latestRows[0]?.latest || null;
+  }
+
   return {
     date: day,
     relative_day: relative,
     timezone: 'Asia/Kolkata',
+    synced_rows: withShift.length,
+    data_synced: withShift.length > 0,
+    latest_synced_date,
     shift_defaults: {
       standard: '09:30–19:00 (late after 09:30)',
       late_start: '10:30–20:00 (late after 10:30)',
@@ -1236,7 +1252,11 @@ async function getAttendanceToday(scope, args = {}) {
     present: withShift.filter((r) => ['Present', 'Late', 'Half Day'].includes(r.status)),
     late: withShift.filter((r) => r.status === 'Late'),
     absent: withShift.filter((r) => r.status === 'Absent'),
-    note: withShift.length ? null : `No attendance synced for ${day} (${relative}) yet.`,
+    note: withShift.length
+      ? null
+      : `No attendance synced for ${day} (${relative}) yet.${
+          latest_synced_date ? ` Latest synced day: ${latest_synced_date}.` : ''
+        }`,
   };
 }
 
@@ -1571,6 +1591,30 @@ async function getAbsentees(args, scope) {
   }
 
   const params = [start, end, ...acl.params];
+  const { rows: syncMeta } = await query(
+    `SELECT COUNT(*)::int AS synced_rows,
+            MAX(d.work_date)::text AS max_in_range
+     FROM attendance_days d
+     JOIN employees e ON e.id = d.employee_id
+     WHERE d.work_date BETWEEN $1::date AND $2::date
+       AND ${acl.clause}`,
+    params
+  );
+  const synced_rows = syncMeta[0]?.synced_rows || 0;
+
+  const latestAcl = teamEmpFilter(scope, 'e', 1);
+  let latest_synced_date = null;
+  if (latestAcl.clause !== 'FALSE') {
+    const { rows: latestRows } = await query(
+      `SELECT MAX(d.work_date)::text AS latest
+       FROM attendance_days d
+       JOIN employees e ON e.id = d.employee_id
+       WHERE ${latestAcl.clause}`,
+      latestAcl.params
+    );
+    latest_synced_date = latestRows[0]?.latest || null;
+  }
+
   const { rows } = await query(
     `SELECT e.name, e.email, d.work_date::text AS work_date, d.status
      FROM attendance_days d
@@ -1607,6 +1651,9 @@ async function getAbsentees(args, scope) {
     start_date: start,
     end_date: end,
     timezone: 'Asia/Kolkata',
+    synced_rows,
+    data_synced: synced_rows > 0,
+    latest_synced_date,
     absentees: rows,
     by_person: [...byPerson.values()],
     count: rows.length,
@@ -1614,9 +1661,13 @@ async function getAbsentees(args, scope) {
     unique_people: byPerson.size,
     truncated: total_count > rows.length,
     note:
-      total_count === 0
-        ? `No Absent rows synced for ${start} → ${end}. If unexpected, sync Attendance — not the same as inventing absentees.`
-        : null,
+      synced_rows === 0
+        ? `No attendance_days rows synced for ${start} → ${end}. That is NOT confirmed zero absentees.${
+            latest_synced_date ? ` Latest synced day: ${latest_synced_date}.` : ''
+          }`
+        : total_count === 0
+          ? `Attendance is synced for this range (${synced_rows} rows) and 0 are marked Absent.`
+          : null,
   };
 }
 
@@ -1654,7 +1705,7 @@ async function getLoginTiming(args, scope) {
   }
 
   const acl = teamEmpFilter(scope, 'e', 2);
-  if (acl.clause === 'FALSE') return { date, timings: [] };
+  if (acl.clause === 'FALSE') return { date, timings: [], synced_rows: 0 };
   const params = [date, ...acl.params];
   const { rows } = await query(
     `SELECT e.name, e.shift_start, e.shift_end, e.late_after,
@@ -1665,15 +1716,38 @@ async function getLoginTiming(args, scope) {
      ORDER BY d.first_in NULLS LAST, e.name`,
     params
   );
+
+  const latestAcl = teamEmpFilter(scope, 'e', 1);
+  let latest_synced_date = null;
+  if (latestAcl.clause !== 'FALSE') {
+    const { rows: latestRows } = await query(
+      `SELECT MAX(d.work_date)::text AS latest
+       FROM attendance_days d
+       JOIN employees e ON e.id = d.employee_id
+       WHERE ${latestAcl.clause}`,
+      latestAcl.params
+    );
+    latest_synced_date = latestRows[0]?.latest || null;
+  }
+
   return {
     date,
     timezone: 'Asia/Kolkata',
-    note: 'Late minutes are vs each employee late_after (default 09:30 IST).',
+    synced_rows: rows.length,
+    data_synced: rows.length > 0,
+    latest_synced_date,
+    note:
+      rows.length === 0
+        ? `No attendance synced for ${date}.${
+            latest_synced_date ? ` Latest synced day: ${latest_synced_date}.` : ''
+          }`
+        : 'Late minutes are vs each employee late_after (default 09:30 IST).',
     timings: rows.map((r) => ({
       ...r,
       shift: `${r.shift_start || '09:30'}–${r.shift_end || '19:00'}`,
       late_after: r.late_after || r.shift_start || '09:30',
     })),
+    late: rows.filter((r) => (r.late_minutes || 0) > 0 || r.status === 'Late'),
     count: rows.length,
   };
 }
