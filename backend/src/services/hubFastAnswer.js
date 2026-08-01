@@ -3,25 +3,11 @@
  * Prefer tools-only for common ops — never invent data.
  */
 import { executeTool } from '../tools/index.js';
-
-function nowInIstParts() {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(new Date()).map((p) => [p.type, p.value])
-  );
-  const todayIst = `${parts.year}-${parts.month}-${parts.day}`;
-  const d = new Date(`${todayIst}T12:00:00+05:30`);
-  d.setDate(d.getDate() - 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return { todayIst, yesterdayIst: `${y}-${m}-${day}` };
-}
+import {
+  dateFromManagerMessage,
+  detectRelativeDayInText,
+  getIstCalendar,
+} from '../utils/istDates.js';
 
 function listNames(rows, key = 'name') {
   if (!rows?.length) return 'none';
@@ -76,13 +62,13 @@ function extractEmployeeName(q) {
     'who', 'what', 'when', 'where', 'how', 'show', 'list', 'get', 'my', 'our',
     'the', 'a', 'an', 'all', 'every', 'everyone', 'entire', 'whole', 'team',
     'staff', 'employee', 'employees', 'people', 'person', 'today', 'yesterday',
-    'week', 'please', 'now', 'me', 'us', 'this', 'that', 'their', 'your',
+    'tomorrow', 'week', 'please', 'now', 'me', 'us', 'this', 'that', 'their', 'your',
   ]);
   for (const re of patterns) {
     const m = q.match(re);
     if (!m?.[1]) continue;
     let name = m[1]
-      .replace(/\b(today|yesterday|please|now|team|the|whole|entire|all|everyone|my|our)\b/gi, '')
+      .replace(/\b(today|yesterday|tomorrow|please|now|team|the|whole|entire|all|everyone|my|our)\b/gi, '')
       .replace(/[?.!,]+$/g, '')
       .trim();
     if (name.length < 2) continue;
@@ -100,13 +86,21 @@ function extractEmployeeName(q) {
  */
 export async function tryHubFastAnswer(manager, userMessage) {
   const q = String(userMessage || '').toLowerCase().trim();
-  const { todayIst, yesterdayIst } = nowInIstParts();
+  const cal = getIstCalendar();
+  const todayIst = cal.today;
+  const yesterdayIst = cal.yesterday;
+  const tomorrowIst = cal.tomorrow;
+  // Typo-tolerant: "yesteraday", "tommorow", "tmrw", etc.
+  const relativeDay = detectRelativeDayInText(q);
+  const dayPick = dateFromManagerMessage(userMessage, cal);
+  const targetDay = dayPick.date;
 
   const asksAbsent =
     /\babsent/.test(q) ||
     /\bwho\b.*\bmissed\b/.test(q) ||
     /\bnot\s+present\b/.test(q);
-  const asksYesterday = /\byesterday\b/.test(q) || /\blast\s+day\b/.test(q);
+  const asksYesterday = relativeDay === 'yesterday';
+  const asksTomorrow = relativeDay === 'tomorrow';
   const asksThisWeek = /\bthis\s+week\b/.test(q) || /\bcurrent\s+week\b/.test(q);
   const asksLastWeek = /\blast\s+week\b/.test(q);
   const asksWeek = asksThisWeek || asksLastWeek || /\bweekly\b/.test(q);
@@ -262,10 +256,22 @@ export async function tryHubFastAnswer(manager, userMessage) {
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `**0** people marked **Absent** on **${yesterdayIst}** (IST).\n\n` +
+          ? `**0** people marked **Absent** on **${yesterdayIst}** (yesterday, IST).\n\n` +
             `If that feels incomplete, hub sync may still be catching up — that is not the same as inventing absentees.`
-          : `**${rows.length}** people were absent on **${yesterdayIst}** (IST):\n` +
+          : `**${rows.length}** people were absent on **${yesterdayIst}** (yesterday, IST):\n` +
             rows.map((r) => `- **${r.name}**${r.email ? ` · ${r.email}` : ''}`).join('\n');
+      return { handled: true, reply, toolsUsed: ['getAbsentees'] };
+    }
+
+    if (asksAbsent && asksTomorrow) {
+      const data = await executeTool('getAbsentees', { date: tomorrowIst }, manager);
+      const rows = data?.absentees || [];
+      const reply =
+        rows.length === 0
+          ? `**0** people marked **Absent** on **${tomorrowIst}** (tomorrow, IST).` +
+            (data?.note ? `\n${data.note}` : '')
+          : `**${rows.length}** absent on **${tomorrowIst}** (tomorrow, IST):\n` +
+            rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
@@ -294,20 +300,21 @@ export async function tryHubFastAnswer(manager, userMessage) {
     }
 
     if (asksAbsent) {
-      const date = todayIst;
+      const date = targetDay;
+      const label = dayPick.relative;
       const data = await executeTool('getAbsentees', { date }, manager);
       const rows = data?.absentees || [];
       const reply =
         rows.length === 0
-          ? `**0** absentees on **${date}** (IST).` +
+          ? `**0** absentees on **${date}** (${label}, IST).` +
             (data?.note ? `\n${data.note}` : '')
-          : `**${rows.length}** absent on **${date}** (IST):\n` +
+          : `**${rows.length}** absent on **${date}** (${label}, IST):\n` +
             rows.map((r) => `- **${r.name}**`).join('\n');
       return { handled: true, reply, toolsUsed: ['getAbsentees'] };
     }
 
     if (asksLogin) {
-      const data = await executeTool('getLoginTiming', { date: todayIst }, manager);
+      const data = await executeTool('getLoginTiming', { date: targetDay }, manager);
       const rows = data?.timings || data?.late || [];
       if (!rows.length) {
         return {
@@ -340,12 +347,19 @@ export async function tryHubFastAnswer(manager, userMessage) {
         /\broll\b/.test(q) ||
         /\bwho\s+(is|are)\s+here\b/.test(q))
     ) {
-      const data = await executeTool('getAttendanceToday', {}, manager);
+      // Never force "today" when manager said yesterday/tomorrow (incl. typos)
+      const data = await executeTool('getAttendanceToday', { date: targetDay }, manager);
+      const dayLabel =
+        targetDay === yesterdayIst
+          ? 'yesterday'
+          : targetDay === tomorrowIst
+            ? 'tomorrow'
+            : 'today';
       if (data?.note && !(data.present?.length || data.late?.length || data.absent?.length)) {
         return {
           handled: true,
           reply:
-            `No attendance data synced for **${data?.date || todayIst}** (IST) yet.\n\n` +
+            `No attendance data synced for **${data?.date || targetDay}** (${dayLabel}, IST) yet.\n\n` +
             `That is not the same as everyone being absent — sync Attendance and ask again.`,
           toolsUsed: ['getAttendanceToday'],
         };
@@ -358,15 +372,15 @@ export async function tryHubFastAnswer(manager, userMessage) {
           ? late.map((r) => `- ${formatLateLine(r)}`).join('\n')
           : '- none';
       const reply =
-        `**${absent.length}** absent · **${late.length}** late · **${present.length}** present on **${data?.date || todayIst}** (IST).\n\n` +
+        `**${absent.length}** absent · **${late.length}** late · **${present.length}** present on **${data?.date || targetDay}** (${dayLabel}, IST).\n\n` +
         `**Late:**\n${lateLines}\n\n` +
         `**Absent:** ${listNames(absent)}\n\n` +
-        `Want full present list or yesterday’s absentees?`;
+        `Want full present list or another day's absentees?`;
       return { handled: true, reply, toolsUsed: ['getAttendanceToday'] };
     }
 
     if (asksInterviews && !extractEmployeeName(userMessage)) {
-      const data = await executeTool('getInterviewSchedule', { date: todayIst }, manager);
+      const data = await executeTool('getInterviewSchedule', { date: targetDay }, manager);
       const rows = data?.interviews || [];
       const reply =
         rows.length === 0
@@ -436,15 +450,20 @@ export async function tryHubFastAnswer(manager, userMessage) {
     }
 
     if (asksEod && !extractEmployeeName(userMessage)) {
-      const data = await executeTool('getDailyBriefing', {}, manager);
+      const data = await executeTool('getMissingEODs', { date: targetDay }, manager);
       const missing = data?.missing_eods || [];
+      const dayLabel =
+        targetDay === yesterdayIst
+          ? 'yesterday'
+          : targetDay === tomorrowIst
+            ? 'tomorrow'
+            : 'today';
       const reply =
-        `**${data?.missing_eod_count ?? missing.length}** missing EODs on **${data?.date || todayIst}** (IST).\n` +
-        `Submitted today: **${data?.eods_submitted_today ?? 0}**.\n\n` +
+        `**${data?.total_count ?? missing.length}** missing EODs on **${data?.date || targetDay}** (${dayLabel}, IST).\n\n` +
         (missing.length
           ? missing.map((r) => `- **${r.name}**`).join('\n')
-          : 'Everyone in scope has an EOD for today (or none synced yet).');
-      return { handled: true, reply, toolsUsed: ['getDailyBriefing'] };
+          : `No missing EODs for that date (or none synced yet).`);
+      return { handled: true, reply, toolsUsed: ['getMissingEODs'] };
     }
 
     const person = extractEmployeeName(userMessage);

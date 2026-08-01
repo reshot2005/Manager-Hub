@@ -147,15 +147,19 @@ clarifying question rather than sending an incomplete or guessed answer.`;
 }
 
 /** Prepend live IST context so the model never guesses "today". */
-export function buildUserTurnWithContext(userMessage, { todayIst, nowIst, yesterdayIst } = {}) {
+export function buildUserTurnWithContext(userMessage, { todayIst, nowIst, yesterdayIst, tomorrowIst } = {}) {
   const ctx = [
     `[SYSTEM CONTEXT — not from the manager]`,
     `today_ist=${todayIst || 'unknown'}`,
     `yesterday_ist=${yesterdayIst || 'unknown'}`,
+    `tomorrow_ist=${tomorrowIst || 'unknown'}`,
     `now_ist=${nowIst || 'unknown'}`,
     `timezone=Asia/Kolkata`,
+    `CRITICAL: Map relative words BEFORE tool calls — never pass "yesterday"/"today"/"tomorrow" as SQL dates; use the *_ist values above (or let tools resolve them).`,
+    `"who was absent yesterday" → getAbsentees({ date: yesterday_ist }) — NEVER today's date.`,
+    `"absent tomorrow" → getAbsentees({ date: tomorrow_ist }).`,
+    `"attendance today" → getAttendanceToday({ date: today_ist }).`,
     `Resolve "this week"/"last week" to concrete IST Mon–Sun dates before tool calls.`,
-    `Yesterday absentees → getAbsenteesList / getAbsentees({ date: yesterday_ist }).`,
     `This week vs last week → getAttendanceComparison (never getAttendanceToday).`,
     `Attendance % for a range → getAttendancePercentage({ startDate, endDate }).`,
     `Absentees this week → getAbsenteesList / getAbsentees({ range: 'this_week' }).`,

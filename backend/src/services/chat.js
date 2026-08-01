@@ -6,6 +6,7 @@ import {
   buildUserTurnWithContext,
 } from './managerAiPrompt.js';
 import { tryHubFastAnswer } from './hubFastAnswer.js';
+import { getIstCalendar } from '../utils/istDates.js';
 
 const TYPE_MAP = {
   OBJECT: SchemaType.OBJECT,
@@ -32,32 +33,13 @@ const toolDeclarations = rawTools.map((t) => ({
 }));
 
 function nowInIst() {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const parts = Object.fromEntries(
-    fmt.formatToParts(new Date()).map((p) => [p.type, p.value])
-  );
+  const cal = getIstCalendar();
   return {
-    todayIst: `${parts.year}-${parts.month}-${parts.day}`,
-    nowIst: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} IST`,
+    todayIst: cal.today,
+    yesterdayIst: cal.yesterday,
+    tomorrowIst: cal.tomorrow,
+    nowIst: cal.nowLabel,
   };
-}
-
-function yesterdayIst(todayIst) {
-  const d = new Date(`${todayIst}T12:00:00+05:30`);
-  d.setDate(d.getDate() - 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 /** After a model hits quota, prefer others for this long (ms). */
@@ -205,7 +187,7 @@ function friendlyFromTools(toolTrace, userMessage) {
   );
 }
 
-async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
+async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst, tIst }) {
   const onVercel = Boolean(process.env.VERCEL);
   const maxRounds = onVercel ? 5 : 12;
   const wallMs = onVercel ? 45_000 : 90_000;
@@ -219,6 +201,7 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
     todayIst,
     nowIst,
     yesterdayIst: yIst,
+    tomorrowIst: tIst,
   });
 
   let lastErr = null;
@@ -326,8 +309,7 @@ async function runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst }) {
  * Manager AI chat — hub-first for common ops questions, Gemini with model fallbacks.
  */
 export async function chatWithGemini(manager, userMessage) {
-  const { todayIst, nowIst } = nowInIst();
-  const yIst = yesterdayIst(todayIst);
+  const { todayIst, nowIst, yesterdayIst: yIst, tomorrowIst: tIst } = nowInIst();
 
   const wantsPulse =
     /\b(how('s| is)? my team|team pulse|daily briefing|standup|what should i know|any alerts?)\b/i.test(
@@ -369,7 +351,7 @@ export async function chatWithGemini(manager, userMessage) {
 
   // 2) Full Gemini + tools for everything else
   try {
-    const result = await runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst });
+    const result = await runGeminiLoop(manager, userMessage, { todayIst, nowIst, yIst, tIst });
     const reply = alertPrefix ? `${alertPrefix}${result.reply}` : result.reply;
     const toolsUsed = [...alertTools, ...(result.toolsUsed || [])];
     await persistTurn(manager.id, userMessage, reply, result.toolTrace);

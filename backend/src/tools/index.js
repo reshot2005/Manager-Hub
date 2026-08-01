@@ -2,6 +2,7 @@ import { query } from '../config/db.js';
 import { getManagerScope, employeeAclClause } from '../services/scope.js';
 import { sanitizeForAi } from '../utils/sanitize.js';
 import { logAiToolCall } from '../utils/auditLog.js';
+import { getIstCalendar, resolveRelativeIstDate } from '../utils/istDates.js';
 
 function fuzzyNameClause(column, paramIndex) {
   return `(
@@ -213,8 +214,16 @@ export const toolDeclarations = [
   {
     name: 'getAttendanceToday',
     description:
-      "Who is present, absent, or late TODAY only (IST). Do NOT use for week ranges or week-vs-week comparisons.",
-    parameters: { type: 'OBJECT', properties: {} },
+      "Who is present, absent, or late for ONE IST calendar day (default today). Pass date=YYYY-MM-DD or yesterday/today/tomorrow. Do NOT use for week ranges or week-vs-week comparisons.",
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        date: {
+          type: 'STRING',
+          description: 'YYYY-MM-DD or yesterday|today|tomorrow (IST). Default today.',
+        },
+      },
+    },
   },
   {
     name: 'getAttendanceComparison',
@@ -273,7 +282,7 @@ export const toolDeclarations = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        date: { type: 'STRING', description: 'YYYY-MM-DD (single day; defaults today IST)' },
+        date: { type: 'STRING', description: 'YYYY-MM-DD or yesterday|today|tomorrow (IST; defaults today)' },
         range: {
           type: 'STRING',
           description: 'this_week | last_week',
@@ -445,7 +454,7 @@ export async function executeTool(name, args, manager) {
         result = await searchPeople(a.query || a.name, scope);
         break;
       case 'getAttendanceToday':
-        result = await getAttendanceToday(scope);
+        result = await getAttendanceToday(scope, a);
         break;
       case 'getAttendanceComparison':
         result = await getAttendanceComparison(a, scope);
@@ -651,8 +660,9 @@ async function getPendingTasks(name, scope) {
 }
 
 async function getMissingEODs(date, scope) {
-  const today = await todayIst();
-  const target = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : today;
+  const cal = getIstCalendar();
+  const resolved = resolveRelativeIstDate(date, cal);
+  const target = resolved || cal.today;
   const acl = teamEmpFilter(scope, 'e', 2);
   if (acl.clause === 'FALSE') {
     return {
@@ -1179,12 +1189,14 @@ function teamEmpFilter(scope, alias = 'e', startIdx = 1) {
   return acl;
 }
 
-async function getAttendanceToday(scope) {
-  const today = await todayIst();
+async function getAttendanceToday(scope, args = {}) {
+  const cal = getIstCalendar();
+  const resolved = resolveRelativeIstDate(args?.date, cal);
+  const day = resolved || cal.today;
   const acl = teamEmpFilter(scope, 'e', 2);
-  if (acl.clause === 'FALSE') return { date: today, present: [], absent: [], late: [], message: 'No team linked.' };
+  if (acl.clause === 'FALSE') return { date: day, present: [], absent: [], late: [], message: 'No team linked.' };
 
-  const params = [today, ...acl.params];
+  const params = [day, ...acl.params];
   const { rows } = await query(
     `SELECT e.name, e.email, e.shift_start, e.shift_end, e.late_after,
             d.status, d.first_in, d.last_out, d.hours_worked, d.late_minutes
@@ -1201,8 +1213,12 @@ async function getAttendanceToday(scope) {
     late_after: r.late_after || r.shift_start || '09:30',
   }));
 
+  const relative =
+    day === cal.yesterday ? 'yesterday' : day === cal.tomorrow ? 'tomorrow' : day === cal.today ? 'today' : 'custom';
+
   return {
-    date: today,
+    date: day,
+    relative_day: relative,
     timezone: 'Asia/Kolkata',
     shift_defaults: {
       standard: '09:30–19:00 (late after 09:30)',
@@ -1220,7 +1236,7 @@ async function getAttendanceToday(scope) {
     present: withShift.filter((r) => ['Present', 'Late', 'Half Day'].includes(r.status)),
     late: withShift.filter((r) => r.status === 'Late'),
     absent: withShift.filter((r) => r.status === 'Absent'),
-    note: withShift.length ? null : 'No attendance synced for today yet.',
+    note: withShift.length ? null : `No attendance synced for ${day} (${relative}) yet.`,
   };
 }
 
@@ -1530,15 +1546,28 @@ async function getAbsentees(args, scope) {
     end = bounds.end;
     label = bounds.label;
   } else if (start && end) {
+    const rs = resolveRelativeIstDate(start, getIstCalendar()) || start;
+    const re = resolveRelativeIstDate(end, getIstCalendar()) || end;
+    start = rs;
+    end = re;
     label = `${start}_to_${end}`;
   } else if (args?.date) {
-    start = args.date;
-    end = args.date;
-    label = 'day';
+    const cal = getIstCalendar();
+    const resolved = resolveRelativeIstDate(args.date, cal);
+    start = resolved || (await todayIst());
+    end = start;
+    label =
+      start === cal.yesterday
+        ? 'yesterday'
+        : start === cal.tomorrow
+          ? 'tomorrow'
+          : start === cal.today
+            ? 'today'
+            : 'day';
   } else {
     start = today;
     end = today;
-    label = 'day';
+    label = 'today';
   }
 
   const params = [start, end, ...acl.params];
@@ -1592,7 +1621,8 @@ async function getAbsentees(args, scope) {
 }
 
 async function getLoginTiming(args, scope) {
-  const date = args.date || (await todayIst());
+  const cal = getIstCalendar();
+  const date = resolveRelativeIstDate(args.date, cal) || cal.today;
   const name = args.employeeName || args.name;
 
   if (name) {
